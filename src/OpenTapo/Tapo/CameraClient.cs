@@ -12,16 +12,33 @@ public sealed record CameraRequest(string Method, string Parameters);
 /// Login exchanges a client/device nonce; requests are wrapped in "securePassthrough" (AES-128-CBC)
 /// and authenticated with a Tapo_tag header over the body and a sequence number.
 /// </summary>
-public sealed class CameraClient(string ip, string password)
+public sealed class CameraClient
 {
-    // shortcut: cameras use a self-signed "TPRI-DEVICE" certificate, accepted without pinning; pin its thumbprint if the LAN is untrusted.
+    // shortcut: cameras use a self-signed "TPRI-DEVICE" / "TAPO-DEVICE" certificate, accepted without pinning; pin its thumbprint if the LAN is untrusted.
     private static readonly HttpClient Http = DeviceHttp.Create(TimeSpan.FromSeconds(8), (_, _, _, _) => true);
+    private static readonly TapoAuthException Rejection = new("The camera rejected this password. If it is correct, enable Third-Party Compatibility in the Tapo app.");
 
     private const int LockedCode = -40404;
 
+    private readonly string ip;
+    private readonly string password;
     private readonly SemaphoreSlim _gate = new(1, 1);
     private CameraSession? _session;
     private (DateTime Until, TapoException Reason)? _blocked;
+
+    /// <param name="knownRejected">The camera already rejected this password in an earlier run: do not spend another attempt on it.</param>
+    public CameraClient(string ip, string password, bool knownRejected = false)
+    {
+        this.ip = ip;
+        this.password = password;
+        if (knownRejected)
+        {
+            _blocked = (DateTime.MaxValue, Rejection);
+        }
+    }
+
+    /// <summary>Raised when the camera rejects the password, so the rejection can outlive this process.</summary>
+    public event EventHandler? Rejected;
 
     /// <summary>Runs several calls in one round trip. Returns method → result, null for calls the camera rejected.</summary>
     public async Task<IReadOnlyDictionary<string, JsonNode?>> ExecuteAsync(params CameraRequest[] requests)
@@ -56,6 +73,7 @@ public sealed class CameraClient(string ip, string password)
                 catch (TapoAuthException ex)
                 {
                     _blocked = (DateTime.MaxValue, ex);
+                    Rejected?.Invoke(this, EventArgs.Empty);
                     throw;
                 }
                 catch (TapoLockedException ex)
@@ -92,7 +110,7 @@ public sealed class CameraClient(string ip, string password)
 
         // device_confirm tells us locally whether the password is right, so a wrong one never reaches the second login step.
         string passwordHash = FindPasswordHash(clientNonce, deviceNonce, deviceConfirm)
-            ?? throw new TapoAuthException("The camera rejected this password. If it is correct, enable Third-Party Compatibility in the Tapo app.");
+            ?? throw Rejection;
 
         string digest = Bytes.Sha256Hex(passwordHash + clientNonce + deviceNonce) + clientNonce + deviceNonce;
         JsonNode? login = (await PostAsync($"https://{ip}/", LoginBody(clientNonce, digest), headers: null))["result"];

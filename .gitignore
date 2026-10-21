@@ -427,6 +427,5 @@ FodyWeavers.xsd
 # Official VS Code C# Dev Kit Extension exclusion
 #*.lscache
 
-# open-tapo build and publish output
+# open-tapo build output
 [Bb]in/
-dist/

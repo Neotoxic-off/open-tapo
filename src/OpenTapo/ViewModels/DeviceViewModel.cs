@@ -1,12 +1,13 @@
 using System.Net.Http;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using CommunityToolkit.Mvvm.Messaging;
 using OpenTapo.Services;
 using OpenTapo.Tapo;
 
 namespace OpenTapo.ViewModels;
 
-public abstract partial class DeviceViewModel : ObservableObject
+public abstract partial class DeviceViewModel : ObservableObject, IRecipient<DeviceExpandedMessage>
 {
     [ObservableProperty]
     private string _name;
@@ -36,8 +37,10 @@ public abstract partial class DeviceViewModel : ObservableObject
     {
         Device = device;
         Sessions = sessions;
-        _name = device.Model;
+        // Until the device answers, the address is the only way to tell two identical models apart.
+        _name = $"{device.Model} · {device.Ip}";
         _subtitle = device.Ip;
+        WeakReferenceMessenger.Default.Register(this);
     }
 
     public TapoDevice Device { get; }
@@ -54,6 +57,22 @@ public abstract partial class DeviceViewModel : ObservableObject
 
     [RelayCommand]
     private void ToggleExpanded() => IsExpanded = !IsExpanded;
+
+    public void Receive(DeviceExpandedMessage message)
+    {
+        if (message.Value != this)
+        {
+            IsExpanded = false;
+        }
+    }
+
+    partial void OnIsExpandedChanged(bool value)
+    {
+        if (value)
+        {
+            WeakReferenceMessenger.Default.Send(new DeviceExpandedMessage(this));
+        }
+    }
 
     /// <summary>Runs an optional device command then reloads state; any failure becomes the card's error line.</summary>
     protected async Task RunAsync(Func<Task>? action)
@@ -72,7 +91,7 @@ public abstract partial class DeviceViewModel : ObservableObject
         }
         catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException)
         {
-            Error = "Unreachable on the network";
+            Error = "Offline or asleep";
             IsReady = false;
         }
         catch (TapoException ex)

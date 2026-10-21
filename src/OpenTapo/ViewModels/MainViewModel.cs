@@ -12,11 +12,12 @@ public sealed partial class MainViewModel : ObservableObject
     private static readonly TimeSpan DiscoveryListenTime = TimeSpan.FromSeconds(2.5);
 
     private readonly CredentialStore _credentials;
-    private readonly ManualDeviceStore _manualDevices;
+    private readonly KnownDeviceStore _knownDevices;
     private readonly DeviceSessions _sessions;
 
     [ObservableProperty]
     [NotifyPropertyChangedFor(nameof(IsSignedOut))]
+    [NotifyPropertyChangedFor(nameof(IsEmpty))]
     private bool _isSignedIn;
 
     [ObservableProperty]
@@ -43,10 +44,10 @@ public sealed partial class MainViewModel : ObservableObject
     [ObservableProperty]
     private bool _isAddOpen;
 
-    public MainViewModel(CredentialStore credentials, ManualDeviceStore manualDevices)
+    public MainViewModel(CredentialStore credentials, KnownDeviceStore knownDevices)
     {
         _credentials = credentials;
-        _manualDevices = manualDevices;
+        _knownDevices = knownDevices;
         _sessions = new DeviceSessions(credentials);
         TapoAccount? account = credentials.Load();
         _isSignedIn = account is not null;
@@ -58,13 +59,13 @@ public sealed partial class MainViewModel : ObservableObject
 
     public bool IsSignedOut => !IsSignedIn;
 
-    public bool IsEmpty => !IsScanning && Devices.Count == 0;
+    public bool IsEmpty => IsSignedIn && !IsScanning && Devices.Count == 0;
 
     /// <summary>Pushed by the view from its PasswordBox, which deliberately isn't bindable.</summary>
     public string Password { private get; set; } = "";
 
-    /// <summary>Discovery needs no account; the account only unlocks reading and controlling devices.</summary>
-    public Task InitializeAsync() => ScanAsync();
+    /// <summary>First run shows only the sign-in setup; scanning starts once an account is stored.</summary>
+    public Task InitializeAsync() => IsSignedIn ? ScanAsync() : Task.CompletedTask;
 
     [RelayCommand]
     private async Task SignInAsync()
@@ -77,8 +78,9 @@ public sealed partial class MainViewModel : ObservableObject
 
         TapoAccount account = new(Email.Trim(), Password);
         SignInError = "";
+        IReadOnlyList<TapoDevice> devices = await DiscoverAsync();
         Status = "Checking your credentials…";
-        AccountCheck check = await AccountVerifier.VerifyAsync(account, Devices.Select(device => device.Device));
+        AccountCheck check = await AccountVerifier.VerifyAsync(account, devices);
         if (check == AccountCheck.Rejected)
         {
             SignInError = "Wrong email or password.";
@@ -89,6 +91,7 @@ public sealed partial class MainViewModel : ObservableObject
         _credentials.Save(account);
         Password = "";
         IsSignedIn = true;
+        Show(devices);
         await RefreshAsync();
         if (check == AccountCheck.NoDeviceReachable)
         {
@@ -97,34 +100,45 @@ public sealed partial class MainViewModel : ObservableObject
     }
 
     [RelayCommand]
-    private async Task SignOutAsync()
+    private void SignOut()
     {
         _credentials.Clear();
+        Devices.Clear();
         SignInError = "";
+        Status = "";
         IsAccountOpen = false;
+        IsAddOpen = false;
         IsSignedIn = false;
-        await RefreshAsync();
     }
 
     [RelayCommand]
     private async Task ScanAsync()
     {
+        Show(await DiscoverAsync());
+        await RefreshAsync();
+    }
+
+    /// <summary>Scans the network and returns every known device, newly found ones included.</summary>
+    private async Task<IReadOnlyList<TapoDevice>> DiscoverAsync()
+    {
         IsScanning = true;
         Status = "Scanning for devices…";
         try
         {
-            IReadOnlyList<TapoDevice> discovered = await TapoDiscovery.ScanAsync(DiscoveryListenTime);
-            foreach (TapoDevice device in discovered.Concat(_manualDevices.Load()))
-            {
-                AddIfMissing(device);
-            }
+            return _knownDevices.Remember(await TapoDiscovery.ScanAsync(DiscoveryListenTime));
         }
         finally
         {
             IsScanning = false;
         }
+    }
 
-        await RefreshAsync();
+    private void Show(IEnumerable<TapoDevice> devices)
+    {
+        foreach (TapoDevice device in devices)
+        {
+            AddIfMissing(device);
+        }
     }
 
     [RelayCommand]
@@ -146,8 +160,8 @@ public sealed partial class MainViewModel : ObservableObject
             return;
         }
 
-        TapoDevice device = new(ip, "", found == TapoDeviceKind.Camera ? "Tapo camera" : "Tapo light", found);
-        _manualDevices.Add(device);
+        TapoDevice device = new(ip, "", found == TapoDeviceKind.Camera ? "Tapo camera" : "Tapo device", found);
+        _knownDevices.Remember([device]);
         ManualIp = "";
         if (AddIfMissing(device) is DeviceViewModel added)
         {
@@ -168,7 +182,7 @@ public sealed partial class MainViewModel : ObservableObject
 
         DeviceViewModel viewModel = device.Kind == TapoDeviceKind.Camera
             ? new CameraViewModel(device, _sessions)
-            : new LightViewModel(device, _sessions);
+            : new SmartDeviceViewModel(device, _sessions);
         Devices.Add(viewModel);
         return viewModel;
     }

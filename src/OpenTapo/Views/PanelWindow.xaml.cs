@@ -82,6 +82,10 @@ public partial class PanelWindow : Window
         }
     }
 
-    private void OnPasswordChanged(object sender, RoutedEventArgs e) =>
-        _viewModel.Password = ((PasswordBox)sender).Password;
+    private void OnPasswordChanged(object sender, RoutedEventArgs e)
+    {
+        string password = ((PasswordBox)sender).Password;
+        _viewModel.Password = password;
+        PasswordPlaceholder.Visibility = password.Length == 0 ? Visibility.Visible : Visibility.Collapsed;
+    }
 }

@@ -1,9 +1,35 @@
 using System.Globalization;
+using System.Text;
 
 namespace OpenTapo.ViewModels;
 
 internal static class Format
 {
+    /// <summary>KLAP devices report their nickname base64-encoded; older firmware sends it in clear.</summary>
+    public static string? Nickname(string? nickname)
+    {
+        if (string.IsNullOrEmpty(nickname))
+        {
+            return null;
+        }
+
+        byte[] buffer = new byte[nickname.Length];
+        return Convert.TryFromBase64String(nickname, buffer, out int length)
+            ? Encoding.UTF8.GetString(buffer, 0, length)
+            : nickname;
+    }
+
+    /// <summary>Plugs report current_power in milliwatts.</summary>
+    public static string Watts(int? milliwatts) =>
+        milliwatts is int value ? $"{value / 1000.0:0.#} W" : "–";
+
+    /// <summary>Energy totals are reported in watt-hours.</summary>
+    public static string Energy(int? currentMilliwatts, int? todayWh, int? monthWh) =>
+        $"Now {Watts(currentMilliwatts)} · today {KilowattHours(todayWh)} · month {KilowattHours(monthWh)}";
+
+    private static string KilowattHours(int? wattHours) =>
+        wattHours is int value ? $"{value / 1000.0:0.##} kWh" : "–";
+
     public static string Duration(int? minutes) => minutes switch
     {
         null => "–",

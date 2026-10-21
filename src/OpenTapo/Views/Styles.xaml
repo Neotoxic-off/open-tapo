@@ -8,6 +8,12 @@
     <FontFamily x:Key="IconFont">Segoe Fluent Icons, Segoe MDL2 Assets</FontFamily>
     <BooleanToVisibilityConverter x:Key="Visible" />
 
+    <!-- Same gradient as App.ico. -->
+    <LinearGradientBrush x:Key="LogoBrush" StartPoint="0,0" EndPoint="1,1">
+        <GradientStop Offset="0" Color="#7B5CFA" />
+        <GradientStop Offset="1" Color="#3A8DFF" />
+    </LinearGradientBrush>
+
     <Style x:Key="Card" TargetType="Border">
         <Setter Property="Background" Value="{DynamicResource CardBackgroundFillColorDefaultBrush}" />
         <Setter Property="BorderBrush" Value="{DynamicResource CardStrokeColorDefaultBrush}" />
@@ -54,6 +60,25 @@
         <Setter Property="FontFamily" Value="{StaticResource IconFont}" />
         <Setter Property="HorizontalAlignment" Value="Center" />
         <Setter Property="VerticalAlignment" Value="Center" />
+    </Style>
+
+    <!-- Icon drawn inside the left padding of a TextBox / PasswordBox. -->
+    <Style x:Key="FieldGlyph" TargetType="TextBlock" BasedOn="{StaticResource Glyph}">
+        <Setter Property="HorizontalAlignment" Value="Left" />
+        <Setter Property="Margin" Value="10,0,0,0" />
+        <Setter Property="FontSize" Value="13" />
+        <Setter Property="IsHitTestVisible" Value="False" />
+        <Setter Property="Foreground" Value="{DynamicResource TextFillColorSecondaryBrush}" />
+    </Style>
+
+    <!-- Small round device-type symbol on the welcome screen. -->
+    <Style x:Key="DeviceBadge" TargetType="Border">
+        <Setter Property="Width" Value="34" />
+        <Setter Property="Height" Value="34" />
+        <Setter Property="Margin" Value="4,0" />
+        <Setter Property="CornerRadius" Value="17" />
+        <Setter Property="Background" Value="{DynamicResource SubtleFillColorSecondaryBrush}" />
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource AccentTextFillColorPrimaryBrush}" />
     </Style>
 
     <!-- Windows 11 style switch built on CheckBox. -->

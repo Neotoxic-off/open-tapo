@@ -23,6 +23,7 @@ public static class TapoDiscovery
     private const int SioUdpConnReset = unchecked((int)0x9800000C);
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan TlsTimeout = TimeSpan.FromSeconds(4);
+    private static readonly string[] CameraCertificateNames = ["CN=TPRI-DEVICE", "CN=TAPO-DEVICE"];
 
     public static async Task<IReadOnlyList<TapoDevice>> ScanAsync(TimeSpan listenTime)
     {
@@ -84,7 +85,7 @@ public static class TapoDiscovery
             using TcpClient tcp = new();
             using CancellationTokenSource connect = new(ConnectTimeout);
             await tcp.ConnectAsync(ip, 80, connect.Token);
-            return TapoDeviceKind.Light;
+            return TapoDeviceKind.Smart;
         }
         catch (Exception ex) when (ex is SocketException or OperationCanceledException)
         {
@@ -92,7 +93,10 @@ public static class TapoDiscovery
         }
     }
 
-    /// <summary>Tapo cameras present a self-signed "TPRI-DEVICE" certificate; checking it costs no login attempt.</summary>
+    /// <summary>
+    /// Tapo cameras present a self-signed certificate ("TPRI-DEVICE" on the C225, "TAPO-DEVICE" on newer
+    /// models such as the C410); checking it costs no login attempt.
+    /// </summary>
     public static async Task<bool> IsCameraAsync(string ip)
     {
         try
@@ -111,7 +115,8 @@ public static class TapoDiscovery
                 RemoteCertificateValidationCallback = (_, _, _, _) => true,
             };
             await ssl.AuthenticateAsClientAsync(options, handshake.Token);
-            return ssl.RemoteCertificate?.Subject.Contains("TPRI", StringComparison.Ordinal) == true;
+            string subject = ssl.RemoteCertificate?.Subject ?? "";
+            return CameraCertificateNames.Any(name => subject.Contains(name, StringComparison.Ordinal));
         }
         catch (Exception ex) when (ex is SocketException or IOException or OperationCanceledException or AuthenticationException)
         {
@@ -161,7 +166,8 @@ public static class TapoDiscovery
                 reply.RemoteEndPoint.Address.ToString(),
                 (string?)info["mac"] ?? "",
                 (string?)info["device_model"] ?? "Tapo",
-                type.Contains("CAMERA", StringComparison.Ordinal) ? TapoDeviceKind.Camera : TapoDeviceKind.Light);
+                type.Contains("CAMERA", StringComparison.Ordinal) ? TapoDeviceKind.Camera : TapoDeviceKind.Smart,
+                type);
             return true;
         }
         catch (JsonException)

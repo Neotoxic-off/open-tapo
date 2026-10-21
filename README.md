@@ -8,13 +8,19 @@ Click the icon next to the clock: a compact dark panel opens above the taskbar, 
 
 ## Features
 
-**Lights / plugs** (KLAP protocol)
+Every control is driven by what the device reports: a feature a model does not answer for is simply hidden, so new models work without a model list.
+
+**Bulbs, light strips, plugs, power strips, switches** (KLAP protocol)
 - On / off, brightness
 - White temperature presets and slider, colour presets, hue and saturation
 - Fade on / off
+- Energy for plugs that meter it: current power, today and this month
 - Time switched on today, over 7 days and over 30 days, plus Wi-Fi signal
 
-**Cameras** (Tapo secure camera API)
+**Hubs (H100) and their sensors**
+- One line per child device under the hub: temperature and humidity, motion, door / window contact, thermostat target, battery level, low battery, offline
+
+**Cameras and doorbells** (Tapo secure camera API)
 - Privacy mode (lens cover), motion and person detection, auto tracking
 - Alarm on detection, siren, status LED, image flip, night vision mode
 - Last alert, SD card usage, Wi-Fi signal
@@ -34,20 +40,20 @@ Click the icon next to the clock: a compact dark panel opens above the taskbar, 
 ## Build and run
 
 ```powershell
-dotnet publish src/OpenTapo -c Release -o dist
-.\dist\OpenTapo.exe
+dotnet publish src/OpenTapo -c Release
+.\src\OpenTapo\bin\Release\net10.0-windows10.0.22621.0\win-x64\publish\OpenTapo.exe
 ```
 
-`dist\OpenTapo.exe` is self-contained: copy it anywhere and run it. Running it again while it is already open brings the panel up.
+`OpenTapo.exe` is self-contained: copy it anywhere and run it. Running it again while it is already open brings the panel up.
 
 Diagnostics: `OpenTapo.exe --probe` lists the devices found on the network and reads each one with the stored account. Errors the app cannot show are written to `%LOCALAPPDATA%\OpenTapo\error.log`.
 
 ## Usage notes
 
-- **Sign in** with the email and password of your Tapo account. The app checks them against a device before saving them, so a typo is reported right away.
+- **First launch** shows only a setup screen asking for your Tapo email and password. open-tapo then scans the network, checks the credentials against a device found there (a typo is reported right away), and only then shows your devices. Signing out returns to this screen.
 - **Lights on recent firmware (1.4+)** only accept TP-Link's newer TPAP protocol, which open-tapo does not support. Enable **Third-Party Compatibility** in the Tapo app's settings to turn the local KLAP protocol back on.
-- **Cameras lock sign-in for about 30 minutes after 10 failed attempts.** open-tapo checks the password locally before completing a login, and it stops retrying after a rejection or a lockout. Repeated sign-ins with a wrong password still count.
-- A device that discovery misses (another subnet, a sleeping Wi-Fi client) can be added by IP with the **+** button.
+- **Cameras lock sign-in for about 30 minutes after 10 failed attempts.** open-tapo checks the password locally before completing a login, and it stops retrying after a rejection or a lockout. Repeated sign-ins with a wrong password still count. A camera that rejected the account is remembered and not retried, even after a restart, until you sign in again.
+- **Every device seen once is remembered**, so battery cameras (such as the C410) stay listed while asleep and update as soon as they wake. A device discovery never sees (another subnet) can be added by IP with the **+** button.
 
 ## Tested devices
 
@@ -75,7 +81,7 @@ Other Tapo bulbs, plugs and cameras that use the same protocols should work, but
 
 ## Not supported
 
-Live video, pan / tilt control, the TPAP protocol. Hubs and battery cameras are untested.
+Live video, pan / tilt control, the TPAP protocol, battery cameras paired to an H200 hub (they are reached through the hub, not directly). Plugs, switches, hubs and sensors follow the documented protocol but are untested on real hardware.
 
 ## Project layout
 

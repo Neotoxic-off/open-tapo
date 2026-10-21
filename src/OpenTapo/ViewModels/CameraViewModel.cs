@@ -14,6 +14,13 @@ public sealed partial class CameraViewModel : DeviceViewModel
     [ObservableProperty]
     private string _lastAlarm = "";
 
+    /// <summary>Battery level for battery cameras (e.g. C410), shown on the row; empty for mains-powered ones.</summary>
+    [ObservableProperty]
+    private string _battery = "";
+
+    [ObservableProperty]
+    private bool _isBatteryLow;
+
     [ObservableProperty]
     private bool _hasStorage;
 
@@ -29,10 +36,13 @@ public sealed partial class CameraViewModel : DeviceViewModel
     [ObservableProperty]
     private NightVisionMode? _nightVision;
 
+    /// <summary>The row switch: on means the camera is watching, off means privacy mode (lens covered).</summary>
+    [ObservableProperty]
+    private bool _isActive = true;
+
     public CameraViewModel(TapoDevice device, DeviceSessions sessions)
         : base(device, sessions)
     {
-        Privacy = Toggle("Privacy mode", "", CameraSwitch.Privacy);
         MotionDetection = Toggle("Motion detection", "", CameraSwitch.MotionDetection);
         Settings =
         [
@@ -51,11 +61,10 @@ public sealed partial class CameraViewModel : DeviceViewModel
             CameraApi.Connection,
             CameraApi.NightVision,
             CameraApi.Rotation,
+            CameraSwitch.Privacy.Get,
             .. _switches.Select(binding => binding.Switch.Get),
         ];
     }
-
-    public SettingToggle Privacy { get; }
 
     public SettingToggle MotionDetection { get; }
 
@@ -72,6 +81,14 @@ public sealed partial class CameraViewModel : DeviceViewModel
 
     [RelayCommand]
     private Task StopSirenAsync() => SendAsync(CameraApi.StopSiren);
+
+    partial void OnIsActiveChanged(bool value)
+    {
+        if (!IsApplying)
+        {
+            _ = SendAsync(CameraSwitch.Privacy.Set(!value));
+        }
+    }
 
     partial void OnNightVisionChanged(NightVisionMode? value)
     {
@@ -107,10 +124,15 @@ public sealed partial class CameraViewModel : DeviceViewModel
                 toggle.Load(setting.Read(results));
             }
 
+            IsActive = CameraSwitch.Privacy.Read(results) != true;
             Flip.Load(CameraApi.ReadFlipped(results));
             HasNightVision = nightVision is not null;
             NightVision = NightVisionModes.FirstOrDefault(mode => mode.Value == nightVision);
             LastAlarm = $"Last alert {Format.Ago((string?)alarm?["last_alarm_time"])}{alarmType}";
+            Battery = (int?)info?["battery_percent"] is int percent
+                ? $"{percent} %{((string?)info?["battery_charging"] == "YES" ? " ⚡" : "")}"
+                : "";
+            IsBatteryLow = (bool?)info?["low_battery"] == true;
             HasStorage = total > 0;
             StorageUsedPercent = total > 0 ? 100 * (total - free) / total : 0;
             Storage = total > 0 ? $"SD card · {free:0.#} GB free of {total:0.#} GB" : "";

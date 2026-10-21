@@ -1,4 +1,4 @@
-using System.Text;
+using System.Collections.ObjectModel;
 using System.Text.Json.Nodes;
 using System.Windows.Media;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -8,12 +8,25 @@ using OpenTapo.Tapo;
 
 namespace OpenTapo.ViewModels;
 
-public sealed partial class LightViewModel : DeviceViewModel
+/// <summary>
+/// Any KLAP device (bulb, light strip, plug, power strip, switch, hub). Everything shown is driven by what
+/// the device reports: a feature it does not answer for is simply hidden.
+/// </summary>
+public sealed partial class SmartDeviceViewModel : DeviceViewModel
 {
     private const string DeviceInfo = "get_device_info";
     private const string DeviceUsage = "get_device_usage";
     private const string FadeInfo = "get_on_off_gradually_info";
+    private const string EnergyUsage = "get_energy_usage";
+    private const string ChildDevices = "get_child_device_list";
     private static readonly Color OffColor = Color.FromRgb(0x6B, 0x6B, 0x75);
+    private static readonly Color OnColor = Color.FromRgb(0xFF, 0xC8, 0x6B);
+
+    [ObservableProperty]
+    private string _glyph = DeviceGlyphs.Power;
+
+    [ObservableProperty]
+    private bool _supportsPower;
 
     [ObservableProperty]
     private bool _isOn;
@@ -63,19 +76,26 @@ public sealed partial class LightViewModel : DeviceViewModel
     [ObservableProperty]
     private string _usageMonth = "–";
 
-    public LightViewModel(TapoDevice device, DeviceSessions sessions)
+    [ObservableProperty]
+    private string _energy = "";
+
+    public SmartDeviceViewModel(TapoDevice device, DeviceSessions sessions)
         : base(device, sessions)
     {
         Fade = new SettingToggle("Fade on / off", "", enabled => SendAsync("set_on_off_gradually_info", new JsonObject { ["enable"] = enabled }));
+        Glyph = DeviceGlyphs.For(device.Type);
     }
 
     public SettingToggle Fade { get; }
+
+    /// <summary>Sensors and other child devices of a hub.</summary>
+    public ObservableCollection<ChildReading> Children { get; } = [];
 
     public IReadOnlyList<LightPreset> Whites => LightPreset.Whites;
 
     public IReadOnlyList<LightPreset> Colors => LightPreset.Colors;
 
-    private KlapClient Client => Sessions.Light(Device.Ip);
+    private KlapClient Client => Sessions.Smart(Device.Ip);
 
     partial void OnIsOnChanged(bool value) => SetStateIfUserChange(new JsonObject { ["device_on"] = value });
 
@@ -101,24 +121,32 @@ public sealed partial class LightViewModel : DeviceViewModel
 
     protected override async Task LoadAsync()
     {
-        IReadOnlyDictionary<string, JsonNode?> results = await Client.ExecuteAsync(DeviceInfo, DeviceUsage, FadeInfo);
-        JsonNode info = results.GetValueOrDefault(DeviceInfo) ?? throw new TapoException("The light did not report its state.");
+        IReadOnlyDictionary<string, JsonNode?> results = await Client.ExecuteAsync(DeviceInfo, DeviceUsage, FadeInfo, EnergyUsage, ChildDevices);
+        JsonNode info = results.GetValueOrDefault(DeviceInfo) ?? throw new TapoException("The device did not report its state.");
         JsonNode? usage = results.GetValueOrDefault(DeviceUsage)?["time_usage"];
+        JsonNode? energy = results.GetValueOrDefault(EnergyUsage);
+        JsonArray? children = results.GetValueOrDefault(ChildDevices)?["child_device_list"]?.AsArray();
         JsonArray? temperatureRange = info["color_temp_range"]?.AsArray();
+        bool supportsPower = info["device_on"] is not null;
         bool isOn = (bool?)info["device_on"] ?? false;
         int brightness = (int?)info["brightness"] ?? 0;
         int colorTemp = (int?)info["color_temp"] ?? 0;
         int hue = (int?)info["hue"] ?? 0;
         int saturation = (int?)info["saturation"] ?? 100;
+        bool supportsBrightness = info["brightness"] is not null;
         bool supportsColors = info["hue"] is not null;
+        // shortcut: only the first page of a hub's children is read (the device default, 10 children); page with start_index for more.
+        List<ChildReading> readings = children?.Select(child => ChildReading.From(child!)).ToList() ?? [];
 
         Apply(() =>
         {
-            Name = DecodeNickname((string?)info["nickname"]) ?? (string?)info["model"] ?? "Light";
+            Name = Format.Nickname((string?)info["nickname"]) ?? (string?)info["model"] ?? Device.Model;
             Subtitle = $"{info["model"]} · {Device.Ip}";
+            Glyph = DeviceGlyphs.For((string?)info["type"] ?? Device.Type);
+            SupportsPower = supportsPower;
             IsOn = isOn;
             Brightness = brightness;
-            SupportsBrightness = info["brightness"] is not null;
+            SupportsBrightness = supportsBrightness;
             SupportsWhites = temperatureRange is not null;
             SupportsColors = supportsColors;
             MinColorTemperature = (int?)temperatureRange?[0] ?? 2500;
@@ -126,20 +154,29 @@ public sealed partial class LightViewModel : DeviceViewModel
             ColorTemperature = colorTemp > 0 ? colorTemp : ColorTemperature;
             Hue = hue;
             Saturation = saturation;
-            State = !isOn ? "Off"
+            Energy = energy is null ? "" : Format.Energy((int?)energy["current_power"], (int?)energy["today_energy"], (int?)energy["month_energy"]);
+            State = !supportsPower ? $"{readings.Count} connected device{(readings.Count == 1 ? "" : "s")}"
+                : !isOn ? "Off"
                 : colorTemp > 0 ? $"{brightness} % · {colorTemp} K"
                 : supportsColors ? $"{brightness} % · color"
-                : SupportsBrightness ? $"{brightness} %"
+                : supportsBrightness ? $"{brightness} %"
+                : energy is not null ? $"On · {Format.Watts((int?)energy["current_power"])}"
                 : "On";
             Glow = !isOn ? OffColor
-                : colorTemp > 0 || !supportsColors ? KelvinColor(colorTemp > 0 ? colorTemp : 2700)
-                : HsvColor(hue, saturation / 100.0);
+                : supportsColors && colorTemp == 0 ? HsvColor(hue, saturation / 100.0)
+                : supportsBrightness ? KelvinColor(colorTemp > 0 ? colorTemp : 2700)
+                : OnColor;
             Fade.Load((bool?)results.GetValueOrDefault(FadeInfo)?["enable"]);
             HasUsage = usage is not null;
             UsageToday = Format.Duration((int?)usage?["today"]);
             UsageWeek = Format.Duration((int?)usage?["past7"]);
             UsageMonth = Format.Duration((int?)usage?["past30"]);
             Signal = Format.Signal((int?)info["rssi"]);
+            Children.Clear();
+            foreach (ChildReading reading in readings)
+            {
+                Children.Add(reading);
+            }
         });
     }
 
@@ -160,19 +197,6 @@ public sealed partial class LightViewModel : DeviceViewModel
     }
 
     private Task SendAsync(string method, JsonObject parameters) => RunAsync(() => Client.CallAsync(method, parameters));
-
-    private static string? DecodeNickname(string? nickname)
-    {
-        if (nickname is null)
-        {
-            return null;
-        }
-
-        byte[] buffer = new byte[nickname.Length];
-        return Convert.TryFromBase64String(nickname, buffer, out int length)
-            ? Encoding.UTF8.GetString(buffer, 0, length)
-            : nickname;
-    }
 
     // Approximate warm→cool white ramp, used only to tint the icon.
     private static Color KelvinColor(int kelvin)

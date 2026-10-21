@@ -47,7 +47,7 @@ public partial class App : Application
             return;
         }
 
-        MainViewModel viewModel = new(new CredentialStore(), new ManualDeviceStore());
+        MainViewModel viewModel = new(new CredentialStore(), new KnownDeviceStore());
         PanelWindow panel = new(viewModel);
         _tray = new TrayIcon(panel);
         ListenForShowRequests(panel);

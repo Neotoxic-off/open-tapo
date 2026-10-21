@@ -6,6 +6,7 @@ namespace OpenTapo.Services;
 public sealed class DeviceSessions
 {
     private readonly CredentialStore _credentials;
+    private readonly RejectedCameraStore _rejectedCameras = new();
     private readonly Dictionary<string, object> _clients = [];
 
     public DeviceSessions(CredentialStore credentials)
@@ -16,15 +17,22 @@ public sealed class DeviceSessions
             lock (_clients)
             {
                 _clients.Clear();
+                // A new account deserves one fresh attempt on every camera.
+                _rejectedCameras.Clear();
             }
         };
     }
 
-    public KlapClient Light(string ip) =>
+    public KlapClient Smart(string ip) =>
         GetOrCreate(ip, account => new KlapClient(ip, account.Email, account.Password));
 
     public CameraClient Camera(string ip) =>
-        GetOrCreate(ip, account => new CameraClient(ip, account.Password));
+        GetOrCreate(ip, account =>
+        {
+            CameraClient client = new(ip, account.Password, _rejectedCameras.Contains(ip));
+            client.Rejected += (_, _) => _rejectedCameras.Add(ip);
+            return client;
+        });
 
     private T GetOrCreate<T>(string ip, Func<TapoAccount, T> create)
         where T : class

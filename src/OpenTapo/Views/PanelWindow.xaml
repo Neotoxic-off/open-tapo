@@ -38,25 +38,77 @@
                 <ColumnDefinition Width="Auto" />
             </Grid.ColumnDefinitions>
             <TextBlock Style="{StaticResource Caption}" VerticalAlignment="Center" Text="{Binding Status}" />
-            <StackPanel Grid.Column="1" Orientation="Horizontal">
+            <StackPanel Grid.Column="1" Orientation="Horizontal" Visibility="{Binding IsSignedIn, Converter={StaticResource Visible}}">
                 <Button Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE72C;" ToolTip="Refresh" Command="{Binding RefreshCommand}" />
                 <Button Style="{StaticResource IconButton}" Width="26" Height="26" FontSize="12" Content="&#xE721;" ToolTip="Scan for devices" Command="{Binding ScanCommand}" />
                 <ToggleButton Style="{StaticResource IconToggle}" Content="&#xE710;" ToolTip="Add a device by IP" IsChecked="{Binding IsAddOpen}" />
-                <ToggleButton Style="{StaticResource IconToggle}" Content="&#xE77B;" ToolTip="Account" IsChecked="{Binding IsAccountOpen}"
-                              Visibility="{Binding IsSignedIn, Converter={StaticResource Visible}}" />
+                <ToggleButton Style="{StaticResource IconToggle}" Content="&#xE77B;" ToolTip="Account" IsChecked="{Binding IsAccountOpen}" />
             </StackPanel>
         </Grid>
 
         <StackPanel Grid.Row="1">
-            <Border Style="{StaticResource Row}" Visibility="{Binding IsSignedOut, Converter={StaticResource Visible}}">
+            <Border Style="{StaticResource Row}" Padding="14,12" Visibility="{Binding IsSignedOut, Converter={StaticResource Visible}}">
                 <StackPanel>
-                    <TextBlock Style="{StaticResource Caption}" FontSize="12" TextWrapping="Wrap"
-                               Text="Sign in with your Tapo account to control devices. Stored in the Windows Credential Locker." />
-                    <TextBox Margin="0,6,0,0" Text="{Binding Email, UpdateSourceTrigger=PropertyChanged}" ToolTip="Email" />
-                    <PasswordBox x:Name="PasswordInput" Margin="0,4,0,0" PasswordChanged="OnPasswordChanged" ToolTip="Password" />
-                    <Button Margin="0,6,0,0" HorizontalAlignment="Stretch" Content="Sign in" IsDefault="True"
-                            Style="{DynamicResource AccentButtonStyle}" Command="{Binding SignInCommand}" />
-                    <TextBlock Style="{StaticResource ErrorText}" FontSize="12" Margin="0,4,0,0" Text="{Binding SignInError}" />
+                    <Border Width="52" Height="52" CornerRadius="14" HorizontalAlignment="Center" Background="{StaticResource LogoBrush}">
+                        <TextBlock Style="{StaticResource Glyph}" Text="&#xEA80;" FontSize="26" Foreground="White" />
+                    </Border>
+                    <TextBlock Style="{StaticResource Title}" FontSize="16" Margin="0,10,0,0" HorizontalAlignment="Center" Text="Welcome to open-tapo" />
+                    <TextBlock Style="{StaticResource Caption}" FontSize="12" Margin="0,2,0,0" HorizontalAlignment="Center"
+                               Text="Your Tapo home, right from the taskbar" />
+
+                    <StackPanel Orientation="Horizontal" HorizontalAlignment="Center" Margin="0,10,0,12">
+                        <Border Style="{StaticResource DeviceBadge}" ToolTip="Lights">
+                            <TextBlock Style="{StaticResource Glyph}" Text="&#xEA80;" />
+                        </Border>
+                        <Border Style="{StaticResource DeviceBadge}" ToolTip="Plugs and switches">
+                            <TextBlock Style="{StaticResource Glyph}" Text="&#xE7E8;" />
+                        </Border>
+                        <Border Style="{StaticResource DeviceBadge}" ToolTip="Cameras">
+                            <TextBlock Style="{StaticResource Glyph}" Text="&#xE722;" />
+                        </Border>
+                        <Border Style="{StaticResource DeviceBadge}" ToolTip="Hubs and sensors">
+                            <TextBlock Style="{StaticResource Glyph}" Text="&#xE701;" />
+                        </Border>
+                    </StackPanel>
+
+                    <Grid>
+                        <TextBox x:Name="EmailBox" Padding="30,6,8,6" Text="{Binding Email, UpdateSourceTrigger=PropertyChanged}" ToolTip="Tapo account email" />
+                        <TextBlock Style="{StaticResource FieldGlyph}" Text="&#xE715;" />
+                        <TextBlock Style="{StaticResource Caption}" Margin="31,0,0,0" VerticalAlignment="Center" IsHitTestVisible="False" Text="Email">
+                            <TextBlock.Visibility>
+                                <MultiBinding Converter="{StaticResource PlaceholderVisibility}">
+                                    <Binding Path="Text" ElementName="EmailBox" />
+                                    <Binding Path="IsKeyboardFocused" ElementName="EmailBox" />
+                                </MultiBinding>
+                            </TextBlock.Visibility>
+                        </TextBlock>
+                    </Grid>
+                    <Grid Margin="0,6,0,0">
+                        <PasswordBox x:Name="PasswordInput" Padding="30,6,8,6" PasswordChanged="OnPasswordChanged" ToolTip="Tapo account password" />
+                        <TextBlock Style="{StaticResource FieldGlyph}" Text="&#xE72E;" />
+                        <TextBlock x:Name="PasswordPlaceholder" Style="{StaticResource Caption}" Margin="31,0,0,0" VerticalAlignment="Center"
+                                   IsHitTestVisible="False" Text="Password" />
+                    </Grid>
+
+                    <Button Margin="0,12,0,0" HorizontalAlignment="Stretch" IsDefault="True"
+                            Style="{DynamicResource AccentButtonStyle}" Command="{Binding SignInCommand}">
+                        <StackPanel Orientation="Horizontal">
+                            <TextBlock Style="{StaticResource Glyph}" Text="&#xE721;" Margin="0,0,8,0" />
+                            <TextBlock Text="Sign in and find my devices" />
+                        </StackPanel>
+                    </Button>
+                    <TextBlock Style="{StaticResource ErrorText}" FontSize="12" Margin="0,6,0,0" HorizontalAlignment="Center" Text="{Binding SignInError}" />
+
+                    <Grid Margin="0,10,0,0">
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="Auto" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <TextBlock Style="{StaticResource Glyph}" Text="&#xEA18;" FontSize="14" VerticalAlignment="Top" Margin="0,1,8,0"
+                                   Foreground="{DynamicResource SystemFillColorSuccessBrush}" />
+                        <TextBlock Grid.Column="1" Style="{StaticResource Caption}" FontSize="12" TextWrapping="Wrap"
+                                   Text="Checked locally by your devices. Stored in the Windows Credential Locker, never sent to the cloud." />
+                    </Grid>
                 </StackPanel>
             </Border>
 
@@ -89,7 +141,7 @@
             </Grid>
         </StackPanel>
 
-        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto">
+        <ScrollViewer Grid.Row="2" VerticalScrollBarVisibility="Auto" Visibility="{Binding IsSignedIn, Converter={StaticResource Visible}}">
             <StackPanel>
                 <ItemsControl ItemsSource="{Binding Devices}" />
                 <TextBlock Style="{StaticResource Caption}" Margin="0,6" HorizontalAlignment="Center"

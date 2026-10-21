@@ -29,7 +29,7 @@ public static class DeviceProbe
                     ? string.Join(", ", (await sessions.Camera(device.Ip).ExecuteAsync(
                             new CameraRequest("getDeviceInfo", """{"device_info":{"name":["basic_info"]}}""")))
                         .Select(result => $"{result.Key}={result.Value?.ToJsonString()}"))
-                    : (await sessions.Light(device.Ip).CallAsync("get_device_info")).ToJsonString();
+                    : (await sessions.Smart(device.Ip).CallAsync("get_device_info")).ToJsonString();
                 await output.WriteLineAsync("  " + state);
             }
             catch (Exception ex)
