@@ -1,10 +1,18 @@
 # open-tapo
 
-A small Windows tray app to control your **TP-Link Tapo** lights and cameras **locally**, without the Tapo app and without going through the cloud.
+A small Windows tray app to control your **TP-Link Tapo** lights, plugs, sensors and cameras **locally**, without the Tapo app and without going through the cloud.
 
-![open-tapo panel](docs/panel.png)
+<p align="center">
+  <img src="docs/login.png" alt="First-run sign-in screen" width="300" />
+  &nbsp;&nbsp;
+  <img src="docs/panel.png" alt="Device panel" width="300" />
+</p>
 
-Click the icon next to the clock: a compact dark panel opens above the taskbar, one line per device. Click a line to unfold its settings; click outside to close it.
+Click the icon next to the clock: a compact dark panel opens above the taskbar, one line per device. Click a line to unfold its settings (one at a time); click outside to close the panel.
+
+## Download
+
+Grab `OpenTapo.exe` from the [latest release](https://github.com/Neotoxic-off/open-tapo/releases/latest) and run it. It is a single self-contained file: no installer, no .NET to install. Windows SmartScreen may warn on first launch because the executable is not code-signed; choose **More info → Run anyway**.
 
 ## Features
 
@@ -21,21 +29,23 @@ Every control is driven by what the device reports: a feature a model does not a
 - One line per child device under the hub: temperature and humidity, motion, door / window contact, thermostat target, battery level, low battery, offline
 
 **Cameras and doorbells** (Tapo secure camera API)
-- Privacy mode (lens cover), motion and person detection, auto tracking
-- Alarm on detection, siren, status LED, image flip, night vision mode
+- Row switch: on = camera watching, off = privacy mode (lens covered)
+- Battery level on the row for battery cameras (C410…), with charging and low-battery hints
+- Motion and person detection, auto tracking, alarm on detection, siren, status LED, image flip, night vision mode
 - Last alert, SD card usage, Wi-Fi signal
 
 **App**
-- Automatic discovery on the local network, or add a device by IP
+- First-run setup: sign in, then the network is scanned and your devices appear
+- Automatic discovery, devices remembered between runs (sleeping battery cameras stay listed), or add one by IP
 - Account stored in the Windows Credential Locker
 - Refreshes every 30 s while the panel is open
-- Single self-contained `.exe`, no installer, Windows 11 Fluent dark theme
+- Single self-contained `.exe`, Windows 11 Fluent dark theme
 
 ## Requirements
 
 - Windows 11 (x64)
 - Your Tapo account email and password: the devices check them locally before they accept any command
-- To build: the [.NET 10 SDK](https://dotnet.microsoft.com/download)
+- To build from source: the [.NET 10 SDK](https://dotnet.microsoft.com/download)
 
 ## Build and run
 
@@ -51,25 +61,27 @@ Diagnostics: `OpenTapo.exe --probe` lists the devices found on the network and r
 ## Usage notes
 
 - **First launch** shows only a setup screen asking for your Tapo email and password. open-tapo then scans the network, checks the credentials against a device found there (a typo is reported right away), and only then shows your devices. Signing out returns to this screen.
-- **Lights on recent firmware (1.4+)** only accept TP-Link's newer TPAP protocol, which open-tapo does not support. Enable **Third-Party Compatibility** in the Tapo app's settings to turn the local KLAP protocol back on.
-- **Cameras lock sign-in for about 30 minutes after 10 failed attempts.** open-tapo checks the password locally before completing a login, and it stops retrying after a rejection or a lockout. Repeated sign-ins with a wrong password still count. A camera that rejected the account is remembered and not retried, even after a restart, until you sign in again.
-- **Every device seen once is remembered**, so battery cameras (such as the C410) stay listed while asleep and update as soon as they wake. A device discovery never sees (another subnet) can be added by IP with the **+** button.
+- **Devices on recent firmware** may only accept TP-Link's newer TPAP protocol, which open-tapo does not support. Enable **Third-Party Compatibility** in the Tapo app's settings to turn the local protocols back on.
+- **Cameras lock sign-in for about 30 minutes after 10 failed attempts.** open-tapo checks the password locally before completing a login and never retries a rejection: a camera that rejected the account is remembered, even after a restart, until you sign in again.
+- **Battery cameras** sleep most of the time and are only reachable while awake. They also pick up a changed account password only once awake: if one rejects a password the other devices accept, wake it in the Tapo app for a minute, then sign in again.
+- **Every device seen once is remembered**, so sleeping battery cameras stay listed and update as soon as they wake. A device discovery never sees (another subnet) can be added by IP with the **+** button.
 
 ## Tested devices
 
 | Device | Firmware |
 |---|---|
 | Tapo L530E (colour bulb) | 1.4.4 |
-| Tapo C225 (camera) | 1.3.2 |
+| Tapo C225 (pan / tilt camera) | 1.3.2 |
+| Tapo C410 (battery camera) | 1.2.1 |
 
-Other Tapo bulbs, plugs and cameras that use the same protocols should work, but they are untested. Settings a device does not report are hidden.
+Plugs, switches, hubs and sensors follow the same documented protocols but are untested on real hardware. Settings a device does not report are hidden.
 
 ## How it works
 
 | Part | Detail |
 |---|---|
-| Discovery | UDP broadcast and unicast to port 20002 (the Tapo app's discovery packet), plus a TLS certificate check on port 443 (`TPRI-DEVICE`) for cameras that do not answer UDP |
-| Lights | KLAP v2 over HTTP: a two-step seed handshake proving both sides know `SHA256(SHA1(email) + SHA1(password))`, then AES-128-CBC requests signed with SHA-256 and a sequence number |
+| Discovery | UDP broadcast and unicast to port 20002 (the Tapo app's discovery packet), plus a TLS certificate check on port 443 (`TPRI-DEVICE` / `TAPO-DEVICE`) for cameras that do not answer UDP |
+| Lights, plugs, hubs | KLAP v2 over HTTP: a two-step seed handshake proving both sides know `SHA256(SHA1(email) + SHA1(password))`, then AES-128-CBC requests signed with SHA-256 and a sequence number, batched with `multipleRequest` |
 | Cameras | HTTPS login as `admin` with `encrypt_type 3` (client and device nonces, `device_confirm`), then `securePassthrough` AES-128-CBC requests authenticated by a `Tapo_tag` header. The camera checks the tag against the body as Python's `json.dumps` would print it, so the envelope is written in exactly that form |
 
 ## Security
@@ -81,15 +93,15 @@ Other Tapo bulbs, plugs and cameras that use the same protocols should work, but
 
 ## Not supported
 
-Live video, pan / tilt control, the TPAP protocol, battery cameras paired to an H200 hub (they are reached through the hub, not directly). Plugs, switches, hubs and sensors follow the documented protocol but are untested on real hardware.
+Live video, pan / tilt control, the TPAP protocol, battery cameras paired to an H200 hub (they are reached through the hub, not directly).
 
 ## Project layout
 
 ```
 src/OpenTapo/
   Tapo/         protocol clients (KLAP, camera), discovery, camera API definitions
-  Services/     credential store, device sessions, account check, manual device list
-  ViewModels/   MVVM (CommunityToolkit.Mvvm)
+  Services/     credential store, device sessions, account check, known devices, rejected cameras
+  ViewModels/   MVVM (CommunityToolkit.Mvvm: observable properties, relay commands, messenger)
   Views/        tray icon, panel, Fluent styles and device templates
   Diagnostics/  --probe and error log
 ```

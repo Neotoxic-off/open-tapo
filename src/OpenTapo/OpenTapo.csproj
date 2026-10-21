@@ -9,6 +9,9 @@
     <Nullable>enable</Nullable>
     <ImplicitUsings>enable</ImplicitUsings>
     <ApplicationIcon>App.ico</ApplicationIcon>
+    <Version>0.1.0</Version>
+    <Product>open-tapo</Product>
+    <Description>Local control of TP-Link Tapo devices from the Windows tray</Description>
     <EnforceCodeStyleInBuild>true</EnforceCodeStyleInBuild>
     <!-- Required by the LibraryImport source generator (DWM / user32 interop). -->
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
