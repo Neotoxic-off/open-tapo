@@ -14,7 +14,7 @@ Click the icon next to the clock: a compact dark panel opens above the taskbar, 
 
 ## Download
 
-Grab `OpenTapo.exe` from the [latest release](https://github.com/Neotoxic-off/open-tapo/releases/latest) and run it. It is a single self-contained file: no installer, no .NET to install. Releases are built, tested and Authenticode-signed by GitHub Actions. SmartScreen may still warn until the signature builds reputation; choose **More info → Run anyway**.
+Grab `OpenTapo.exe` from the [latest release](https://github.com/Neotoxic-off/open-tapo/releases/latest) and run it. It is a single self-contained file: no installer, no .NET to install. Releases are built, tested and signed by GitHub Actions with the project's self-signed certificate (thumbprint `A166886F5099962FC334670D311A3CE186EED6F0`), so you can check a download really comes from this repository. Windows does not trust a self-signed certificate: SmartScreen warns on first launch and shows an unknown publisher; choose **More info → Run anyway**.
 
 ## Features
 
