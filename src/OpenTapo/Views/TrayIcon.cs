@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Windows;
@@ -10,6 +11,7 @@ using Forms = System.Windows.Forms;
 namespace OpenTapo.Views;
 
 /// <summary>Notification-area icon: left click toggles the panel, right click opens a Fluent-styled menu.</summary>
+[ExcludeFromCodeCoverage(Justification = "WPF shell: needs a desktop session and a notification area.")]
 public sealed partial class TrayIcon : IDisposable
 {
     // A click on the icon first deactivates (hides) the panel; within this window it must not reopen it.

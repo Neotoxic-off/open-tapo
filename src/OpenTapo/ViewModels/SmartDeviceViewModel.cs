@@ -136,7 +136,7 @@ public sealed partial class SmartDeviceViewModel : DeviceViewModel
         bool supportsBrightness = info["brightness"] is not null;
         bool supportsColors = info["hue"] is not null;
         // shortcut: only the first page of a hub's children is read (the device default, 10 children); page with start_index for more.
-        List<ChildReading> readings = children?.Select(child => ChildReading.From(child!)).ToList() ?? [];
+        List<ChildReading> readings = children?.OfType<JsonNode>().Select(ChildReading.From).ToList() ?? [];
 
         Apply(() =>
         {

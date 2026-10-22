@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Threading;
@@ -6,6 +7,7 @@ using OpenTapo.ViewModels;
 namespace OpenTapo.Views;
 
 /// <summary>Flyout anchored above the notification area; hides when it loses focus, like the Windows quick settings.</summary>
+[ExcludeFromCodeCoverage(Justification = "WPF shell: needs a desktop session and a notification area.")]
 public partial class PanelWindow : Window
 {
     private const double ScreenMargin = 12;

@@ -25,17 +25,22 @@ public static class TapoDiscovery
     private static readonly TimeSpan TlsTimeout = TimeSpan.FromSeconds(4);
     private static readonly string[] CameraCertificateNames = ["CN=TPRI-DEVICE", "CN=TAPO-DEVICE"];
 
+    /// <summary>Tests aim discovery at loopback fakes so a test run never probes the user's real devices.</summary>
+    internal static IPAddress BroadcastAddress { get; set; } = IPAddress.Broadcast;
+
+    internal static Func<IEnumerable<string>> Hosts { get; set; } = LocalSubnetHosts;
+
     public static async Task<IReadOnlyList<TapoDevice>> ScanAsync(TimeSpan listenTime)
     {
         Dictionary<string, TapoDevice> found = [];
         byte[] packet = BuildDiscoveryPacket();
-        List<string> hosts = LocalSubnetHosts().ToList();
+        List<string> hosts = Hosts().ToList();
 
         using (UdpClient udp = new(0) { EnableBroadcast = true })
         {
             // ICMP "port unreachable" from silent hosts must not abort the receive loop.
             udp.Client.IOControl(SioUdpConnReset, [0, 0, 0, 0], null);
-            await udp.SendAsync(packet, new IPEndPoint(IPAddress.Broadcast, DiscoveryPort));
+            await udp.SendAsync(packet, new IPEndPoint(BroadcastAddress, DiscoveryPort));
             // Windows Firewall drops replies to a broadcast (source mismatch), so unicast every neighbour too.
             foreach (string host in hosts)
             {
@@ -144,7 +149,7 @@ public static class TapoDiscovery
         return packet;
     }
 
-    private static bool TryParseReply(UdpReceiveResult reply, [NotNullWhen(true)] out TapoDevice? device)
+    internal static bool TryParseReply(UdpReceiveResult reply, [NotNullWhen(true)] out TapoDevice? device)
     {
         device = null;
         if (reply.Buffer.Length <= HeaderLength)
@@ -170,14 +175,15 @@ public static class TapoDiscovery
                 type);
             return true;
         }
-        catch (JsonException)
+        catch (Exception ex) when (TapoException.IsMalformedReply(ex))
         {
+            device = null;
             return false;
         }
     }
 
     // shortcut: assumes /24 home networks, widen if devices live on a larger subnet.
-    private static IEnumerable<string> LocalSubnetHosts() =>
+    internal static IEnumerable<string> LocalSubnetHosts() =>
         NetworkInterface.GetAllNetworkInterfaces()
             .Where(nic => nic.OperationalStatus == OperationalStatus.Up && nic.GetIPProperties().GatewayAddresses.Count > 0)
             .SelectMany(nic => nic.GetIPProperties().UnicastAddresses)

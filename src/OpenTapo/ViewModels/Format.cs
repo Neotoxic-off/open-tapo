@@ -48,7 +48,8 @@ internal static class Format
 
     public static string Ago(string? unixSeconds)
     {
-        if (!long.TryParse(unixSeconds, out long seconds) || seconds <= 0)
+        // The value comes from the device: anything past year 9999 would make FromUnixTimeSeconds throw.
+        if (!long.TryParse(unixSeconds, out long seconds) || seconds <= 0 || seconds > DateTimeOffset.MaxValue.ToUnixTimeSeconds())
         {
             return "none";
         }

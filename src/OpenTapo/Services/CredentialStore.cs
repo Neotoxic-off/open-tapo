@@ -7,7 +7,8 @@ public sealed record TapoAccount(string Email, string Password);
 /// <summary>Keeps the Tapo account in the Windows Credential Locker (DPAPI-protected, per user).</summary>
 public sealed class CredentialStore
 {
-    private const string Resource = "OpenTapo";
+    /// <summary>Tests use their own resource name so they never touch the user's stored account.</summary>
+    internal static string Resource { get; set; } = "OpenTapo";
 
     public event EventHandler? Changed;
 

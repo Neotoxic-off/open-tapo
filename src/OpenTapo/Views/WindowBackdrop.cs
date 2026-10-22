@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Runtime.InteropServices;
 using System.Windows;
 using System.Windows.Interop;
@@ -6,6 +7,7 @@ using System.Windows.Media;
 namespace OpenTapo.Views;
 
 /// <summary>Gives a window the Windows 11 flyout look: dark acrylic backdrop and rounded corners.</summary>
+[ExcludeFromCodeCoverage(Justification = "WPF shell: needs a desktop session and a notification area.")]
 internal static partial class WindowBackdrop
 {
     private const int DwmUseImmersiveDarkMode = 20;

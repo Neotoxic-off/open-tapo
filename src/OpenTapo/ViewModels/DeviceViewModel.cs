@@ -99,6 +99,12 @@ public abstract partial class DeviceViewModel : ObservableObject, IRecipient<Dev
             Error = ex.Message;
             IsReady = false;
         }
+        catch (Exception ex) when (TapoException.IsMalformedReply(ex))
+        {
+            // A field of an unexpected type in an otherwise valid reply.
+            Error = "Unexpected reply from the device.";
+            IsReady = false;
+        }
         finally
         {
             IsBusy = false;

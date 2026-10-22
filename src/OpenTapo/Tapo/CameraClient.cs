@@ -89,6 +89,10 @@ public sealed class CameraClient
                 }
             }
         }
+        catch (Exception ex) when (TapoException.IsMalformedReply(ex))
+        {
+            throw new TapoException("Unexpected reply from the camera.");
+        }
         finally
         {
             _gate.Release();

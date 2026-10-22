@@ -10,8 +10,7 @@ namespace OpenTapo.Services;
 /// </summary>
 public sealed class KnownDeviceStore
 {
-    private static readonly string FilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTapo", "devices.json");
+    private static string FilePath => AppFolder.File("devices.json");
 
     public IReadOnlyList<TapoDevice> Load()
     {

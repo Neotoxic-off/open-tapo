@@ -37,6 +37,10 @@ public sealed class KlapClient(string ip, string email, string password)
                 }
             }
         }
+        catch (Exception ex) when (TapoException.IsMalformedReply(ex))
+        {
+            throw new TapoException("Unexpected reply from the device.");
+        }
         finally
         {
             _gate.Release();

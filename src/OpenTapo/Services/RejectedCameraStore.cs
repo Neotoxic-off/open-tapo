@@ -10,8 +10,7 @@ namespace OpenTapo.Services;
 /// </summary>
 public sealed class RejectedCameraStore
 {
-    private static readonly string FilePath = Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "OpenTapo", "rejected-cameras.json");
+    private static string FilePath => AppFolder.File("rejected-cameras.json");
 
     private readonly object _sync = new();
 
@@ -40,7 +39,11 @@ public sealed class RejectedCameraStore
     {
         lock (_sync)
         {
-            File.Delete(FilePath);
+            // File.Delete throws when the folder does not exist yet (first sign-in with no device found).
+            if (File.Exists(FilePath))
+            {
+                File.Delete(FilePath);
+            }
         }
     }
 

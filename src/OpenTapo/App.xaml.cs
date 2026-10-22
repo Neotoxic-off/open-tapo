@@ -1,3 +1,4 @@
+using System.Diagnostics.CodeAnalysis;
 using System.Windows;
 using OpenTapo.Diagnostics;
 using OpenTapo.Services;
@@ -6,6 +7,7 @@ using OpenTapo.Views;
 
 namespace OpenTapo;
 
+[ExcludeFromCodeCoverage(Justification = "WPF shell: needs a desktop session and a notification area.")]
 public partial class App : Application
 {
     private const string SingleInstanceName = "OpenTapo.SingleInstance";
