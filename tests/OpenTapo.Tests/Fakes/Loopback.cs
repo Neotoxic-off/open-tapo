@@ -1,6 +1,7 @@
 using System.IO;
 using System.Net;
 using System.Security.Cryptography;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -33,6 +34,15 @@ internal static class Loopback
         app.Run(handle);
         await app.StartAsync();
         return app;
+    }
+
+    public static X509Certificate2 CreateCertificate(string subject)
+    {
+        using RSA rsa = RSA.Create(2048);
+        CertificateRequest request = new(subject, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
+        using X509Certificate2 ephemeral = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
+        // SChannel needs a persisted key: round-trip through PFX.
+        return X509CertificateLoader.LoadPkcs12(ephemeral.Export(X509ContentType.Pfx), null);
     }
 
     public static async Task<byte[]> ReadBodyAsync(HttpRequest request)

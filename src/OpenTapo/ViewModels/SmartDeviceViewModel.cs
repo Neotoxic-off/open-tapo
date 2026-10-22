@@ -9,8 +9,8 @@ using OpenTapo.Tapo;
 namespace OpenTapo.ViewModels;
 
 /// <summary>
-/// Any KLAP device (bulb, light strip, plug, power strip, switch, hub). Everything shown is driven by what
-/// the device reports: a feature it does not answer for is simply hidden.
+/// Any smart API device (bulb, light strip, plug, power strip, switch, hub, fan) and every Kasa device. Everything
+/// shown is driven by what the device reports: a feature it does not answer for is simply hidden.
 /// </summary>
 public sealed partial class SmartDeviceViewModel : DeviceViewModel
 {
@@ -79,6 +79,12 @@ public sealed partial class SmartDeviceViewModel : DeviceViewModel
     [ObservableProperty]
     private string _energy = "";
 
+    [ObservableProperty]
+    private bool _supportsFanSpeed;
+
+    [ObservableProperty]
+    private double _fanSpeed = 1;
+
     public SmartDeviceViewModel(TapoDevice device, DeviceSessions sessions)
         : base(device, sessions)
     {
@@ -91,11 +97,14 @@ public sealed partial class SmartDeviceViewModel : DeviceViewModel
     /// <summary>Sensors and other child devices of a hub.</summary>
     public ObservableCollection<ChildReading> Children { get; } = [];
 
+    /// <summary>Switchable children: the outlets of a power strip, switches behind a hub.</summary>
+    public ObservableCollection<SettingToggle> Outlets { get; } = [];
+
     public IReadOnlyList<LightPreset> Whites => LightPreset.Whites;
 
     public IReadOnlyList<LightPreset> Colors => LightPreset.Colors;
 
-    private KlapClient Client => Sessions.Smart(Device.Ip);
+    private SmartClient Client => Sessions.Smart(Device);
 
     partial void OnIsOnChanged(bool value) => SetStateIfUserChange(new JsonObject { ["device_on"] = value });
 
@@ -104,6 +113,9 @@ public sealed partial class SmartDeviceViewModel : DeviceViewModel
 
     partial void OnColorTemperatureChanged(double value) =>
         SetStateIfUserChange(new JsonObject { ["color_temp"] = (int)Math.Round(value), ["device_on"] = true });
+
+    partial void OnFanSpeedChanged(double value) =>
+        SetStateIfUserChange(new JsonObject { ["fan_speed_level"] = Math.Clamp((int)Math.Round(value), 1, 4), ["device_on"] = true });
 
     partial void OnHueChanged(double value) => SetStateIfUserChange(ColorState());
 
@@ -135,8 +147,11 @@ public sealed partial class SmartDeviceViewModel : DeviceViewModel
         int saturation = (int?)info["saturation"] ?? 100;
         bool supportsBrightness = info["brightness"] is not null;
         bool supportsColors = info["hue"] is not null;
+        int? fanSpeed = (int?)info["fan_speed_level"];
         // shortcut: only the first page of a hub's children is read (the device default, 10 children); page with start_index for more.
-        List<ChildReading> readings = children?.OfType<JsonNode>().Select(ChildReading.From).ToList() ?? [];
+        List<JsonNode> childList = children?.OfType<JsonNode>().ToList() ?? [];
+        List<ChildReading> readings = childList.Where(child => child["device_on"] is null).Select(ChildReading.From).ToList();
+        List<SettingToggle> outlets = childList.Where(child => child["device_on"] is not null).Select(Outlet).ToList();
 
         Apply(() =>
         {
@@ -155,8 +170,11 @@ public sealed partial class SmartDeviceViewModel : DeviceViewModel
             Hue = hue;
             Saturation = saturation;
             Energy = energy is null ? "" : Format.Energy((int?)energy["current_power"], (int?)energy["today_energy"], (int?)energy["month_energy"]);
-            State = !supportsPower ? $"{readings.Count} connected device{(readings.Count == 1 ? "" : "s")}"
+            SupportsFanSpeed = fanSpeed is not null;
+            FanSpeed = fanSpeed ?? FanSpeed;
+            State = !supportsPower ? $"{childList.Count} connected device{(childList.Count == 1 ? "" : "s")}"
                 : !isOn ? "Off"
+                : fanSpeed is int speed ? $"Speed {speed}"
                 : colorTemp > 0 ? $"{brightness} % · {colorTemp} K"
                 : supportsColors ? $"{brightness} % · color"
                 : supportsBrightness ? $"{brightness} %"
@@ -177,7 +195,33 @@ public sealed partial class SmartDeviceViewModel : DeviceViewModel
             {
                 Children.Add(reading);
             }
+
+            Outlets.Clear();
+            foreach (SettingToggle outlet in outlets)
+            {
+                Outlets.Add(outlet);
+            }
         });
+    }
+
+    private SettingToggle Outlet(JsonNode child)
+    {
+        string id = (string?)child["device_id"] ?? "";
+        SettingToggle outlet = new(Format.Nickname((string?)child["nickname"]) ?? (string?)child["model"] ?? "Outlet", DeviceGlyphs.Power, on => SendAsync("control_child", new JsonObject
+        {
+            ["device_id"] = id,
+            // The parent forwards requestData to the child as a request of its own.
+            ["requestData"] = new JsonObject
+            {
+                ["method"] = "multipleRequest",
+                ["params"] = new JsonObject
+                {
+                    ["requests"] = new JsonArray(new JsonObject { ["method"] = "set_device_info", ["params"] = new JsonObject { ["device_on"] = on } }),
+                },
+            },
+        }));
+        outlet.Load((bool?)child["device_on"]);
+        return outlet;
     }
 
     private JsonObject ColorState() => new()

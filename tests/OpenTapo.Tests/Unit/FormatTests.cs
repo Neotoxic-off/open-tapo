@@ -84,6 +84,8 @@ public sealed class ChildReadingTests
     [InlineData("""{"model":"T110","open":true}""", "T110", "Open", true)]
     [InlineData("""{"model":"T110","open":false}""", "T110", "Closed", false)]
     [InlineData("""{"model":"T110","open":false,"at_low_battery":true}""", "T110", "Closed · low battery", true)]
+    [InlineData("""{"model":"T300","in_alarm":true}""", "T300", "Leak", true)]
+    [InlineData("""{"model":"T300","in_alarm":false}""", "T300", "Dry", false)]
     [InlineData("""{"model":"S200B","status":"offline"}""", "S200B", "offline", true)]
     [InlineData("""{"model":"S200B","status":"online"}""", "S200B", "S200B", false)]
     [InlineData("""{"current_temp":null}""", "Sensor", "", false)]

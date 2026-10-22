@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using System.Text.Json.Nodes;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
@@ -40,6 +41,10 @@ public sealed partial class CameraViewModel : DeviceViewModel
     [ObservableProperty]
     private bool _isActive = true;
 
+    /// <summary>False for devices with no lens, such as the H200 hub: the row switch is hidden.</summary>
+    [ObservableProperty]
+    private bool _supportsPrivacy = true;
+
     public CameraViewModel(TapoDevice device, DeviceSessions sessions)
         : base(device, sessions)
     {
@@ -62,6 +67,7 @@ public sealed partial class CameraViewModel : DeviceViewModel
             CameraApi.NightVision,
             CameraApi.Rotation,
             CameraSwitch.Privacy.Get,
+            CameraApi.ChildDevices,
             .. _switches.Select(binding => binding.Switch.Get),
         ];
     }
@@ -73,6 +79,9 @@ public sealed partial class CameraViewModel : DeviceViewModel
     public IReadOnlyList<SettingToggle> Settings { get; }
 
     public IReadOnlyList<NightVisionMode> NightVisionModes => NightVisionMode.All;
+
+    /// <summary>Sensors and cameras paired to an H200 hub.</summary>
+    public ObservableCollection<ChildReading> Children { get; } = [];
 
     private CameraClient Client => Sessions.Camera(Device.Ip);
 
@@ -105,6 +114,10 @@ public sealed partial class CameraViewModel : DeviceViewModel
         JsonNode? disk = results.GetValueOrDefault(CameraApi.SdCard.Method)?["harddisk_manage"]?["hd_info"]?[0]?["hd_info_1"];
         JsonNode? alarm = results.GetValueOrDefault(CameraApi.LastAlarm.Method)?["system"]?["last_alarm_info"];
         string? nightVision = CameraApi.ReadNightVision(results);
+        bool? privacy = CameraSwitch.Privacy.Read(results);
+        // shortcut: only the first page of the hub's children is read; page with start_index for more.
+        List<ChildReading> children = results.GetValueOrDefault(CameraApi.ChildDevices.Method)?["child_device_list"]?.AsArray()
+            .OfType<JsonNode>().Select(ChildReading.From).ToList() ?? [];
         double total = Format.Gigabytes((string?)disk?["total_space"]);
         double free = Format.Gigabytes((string?)disk?["free_space"]);
         string alarmType = (string?)alarm?["last_alarm_type"] switch
@@ -124,7 +137,14 @@ public sealed partial class CameraViewModel : DeviceViewModel
                 toggle.Load(setting.Read(results));
             }
 
-            IsActive = CameraSwitch.Privacy.Read(results) != true;
+            IsActive = privacy != true;
+            SupportsPrivacy = privacy is not null;
+            Children.Clear();
+            foreach (ChildReading child in children)
+            {
+                Children.Add(child);
+            }
+
             Flip.Load(CameraApi.ReadFlipped(results));
             HasNightVision = nightVision is not null;
             NightVision = NightVisionModes.FirstOrDefault(mode => mode.Value == nightVision);

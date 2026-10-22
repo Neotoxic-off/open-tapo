@@ -2,7 +2,7 @@
 
 [![build](https://github.com/Neotoxic-off/open-tapo/actions/workflows/release.yml/badge.svg)](https://github.com/Neotoxic-off/open-tapo/actions/workflows/release.yml)
 
-A small Windows tray app to control your **TP-Link Tapo** lights, plugs, sensors and cameras **locally**, without the Tapo app and without going through the cloud.
+A small Windows tray app to control your **TP-Link Tapo and Kasa** lights, plugs, sensors, cameras and robot vacuums **locally**, without the Tapo or Kasa app and without going through the cloud.
 
 <p align="center">
   <img src="docs/login.png" alt="First-run sign-in screen" width="300" />
@@ -20,24 +20,36 @@ Grab `OpenTapo.exe` from the [latest release](https://github.com/Neotoxic-off/op
 
 Every control is driven by what the device reports: a feature a model does not answer for is simply hidden, so new models work without a model list.
 
-**Bulbs, light strips, plugs, power strips, switches** (KLAP protocol)
-- On / off, brightness
+**Tapo bulbs, light strips, plugs, power strips, switches, fans** (KLAP, or AES on older firmware)
+- On / off, brightness, fan speed
 - White temperature presets and slider, colour presets, hue and saturation
 - Fade on / off
+- One switch per outlet on power strips (P300…)
 - Energy for plugs that meter it: current power, today and this month
 - Time switched on today, over 7 days and over 30 days, plus Wi-Fi signal
 
 **Hubs (H100) and their sensors**
-- One line per child device under the hub: temperature and humidity, motion, door / window contact, thermostat target, battery level, low battery, offline
+- One line per child device under the hub: temperature and humidity, motion, door / window contact, water leak, thermostat target, battery level, low battery, offline; switches behind the hub get their own toggle
 
-**Cameras and doorbells** (Tapo secure camera API)
+**Cameras, doorbells and the H200 hub** (Tapo secure camera API)
 - Row switch: on = camera watching, off = privacy mode (lens covered)
 - Battery level on the row for battery cameras (C410…), with charging and low-battery hints
 - Motion and person detection, auto tracking, alarm on detection, siren, status LED, image flip, night vision mode
 - Last alert, SD card usage, Wi-Fi signal
+- H200: one line per paired sensor or camera
+
+**Robot vacuums** (RV10, RV30…: SSL, or KLAP over HTTPS)
+- Status (cleaning, returning, charging, paused…) and battery on the row
+- Clean (resumes when paused), pause, back to dock
+
+**Kasa devices** (legacy XOR protocol, KLAP on newer firmware, Linkie for cameras)
+- Plugs (HS100, HS110, KP115…), switches and dimmers (HS200, HS220…), power strips (HS300, KP303…) with one switch per outlet
+- Bulbs and light strips (KL110, KL130, KL430…): on / off, brightness, white temperature, colour
+- Current power for plugs and bulbs that meter it
+- Kasa cameras (KC…): on / off
 
 **App**
-- First-run setup: sign in, then the network is scanned and your devices appear
+- First-run setup: sign in, then the network is scanned (Tapo discovery on UDP 20002, Kasa discovery on UDP 9999) and your devices appear
 - Automatic discovery, devices remembered between runs (sleeping battery cameras stay listed), or add one by IP
 - Account stored in the Windows Credential Locker
 - Refreshes every 30 s while the panel is open
@@ -65,8 +77,8 @@ dotnet test tests/OpenTapo.Tests
 ```
 
 - **Unit**: formatting, sensor readings, camera API payloads, converters.
-- **Integration**: fake KLAP devices and fake cameras speaking the real protocols (handshakes, AES-CBC, `Tapo_tag`, device_confirm, lockout) on loopback addresses `127.0.0.x`, ports 28080, 443 and 20002, driven through the real clients, discovery, stores and view models.
-- **Fuzz**: seeded random datagrams, JSON documents, encrypted payloads and raw HTTP bodies against every parser that reads LAN data. Any host can answer as a device, so a hostile reply must end as an error line, never a crash.
+- **Integration**: fake devices speaking every real protocol (KLAP v1 and v2 over HTTP and HTTPS, AES with RSA handshake, SSL vacuum login, Kasa XOR and Linkie, the camera API with `Tapo_tag`, device_confirm and lockout) on loopback addresses `127.0.0.x`, ports 28080, 28443, 29999, 20443, 443 and 20002, driven through the real clients, discovery, stores and view models.
+- **Fuzz**: seeded random datagrams, JSON documents, encrypted payloads, XOR streams and raw HTTP bodies against every parser that reads LAN data. Any host can answer as a device, so a hostile reply must end as an error line, never a crash.
 
 The run fails below 100 % line coverage (coverlet). The WPF shell (`App`, panel window, tray icon, window backdrop) needs a desktop session and is excluded. Tests never touch your account, `%LOCALAPPDATA%\OpenTapo` or your LAN: they use their own Credential Locker entry, a temporary folder and loopback devices only.
 
@@ -92,26 +104,31 @@ Diagnostics: `OpenTapo.exe --probe` lists the devices found on the network and r
 | Tapo C225 (pan / tilt camera) | 1.3.2 |
 | Tapo C410 (battery camera) | 1.2.1 |
 
-Plugs, switches, hubs and sensors follow the same documented protocols but are untested on real hardware. Settings a device does not report are hidden.
+Plugs, switches, hubs, sensors, vacuums and Kasa devices follow the protocols documented by [python-kasa](https://github.com/python-kasa/python-kasa) and are tested against fakes of those protocols, not on real hardware. The Kasa camera on / off command is not covered by python-kasa and is the least certain. Settings a device does not report are hidden.
 
 ## How it works
 
 | Part | Detail |
 |---|---|
-| Discovery | UDP broadcast and unicast to port 20002 (the Tapo app's discovery packet), plus a TLS certificate check on port 443 (`TPRI-DEVICE` / `TAPO-DEVICE`) for cameras that do not answer UDP |
+| Discovery | UDP broadcast and unicast to port 20002 (the Tapo app's discovery packet, whose reply names the device type and transport) and to port 9999 (the Kasa app's XOR `get_sysinfo`), plus a TLS certificate check on port 443 (`TPRI-DEVICE` / `TAPO-DEVICE`) for cameras that answer neither |
 | Lights, plugs, hubs | KLAP v2 over HTTP: a two-step seed handshake proving both sides know `SHA256(SHA1(email) + SHA1(password))`, then AES-128-CBC requests signed with SHA-256 and a sequence number, batched with `multipleRequest` |
+| Older Tapo firmware | AES over HTTP: an RSA-1024 handshake hands over an AES-128-CBC key, then `login_device` and every request travel in `securePassthrough` |
+| Robot vacuums | SSL over HTTPS :4433: a login with the email and `MD5(password)` returns a token for plain requests (KLAP v2 over HTTPS on newer firmware) |
+| Kasa | Legacy XOR protocol over TCP :9999 (no account); KLAP v1 (`MD5(MD5(email) + MD5(password))`) on newer firmware; cameras over Linkie (HTTPS :10443). Kasa calls are translated to the smart API the Tapo view already uses |
 | Cameras | HTTPS login as `admin` with `encrypt_type 3` (client and device nonces, `device_confirm`), then `securePassthrough` AES-128-CBC requests authenticated by a `Tapo_tag` header. The camera checks the tag against the body as Python's `json.dumps` would print it, so the envelope is written in exactly that form |
 
 ## Security
 
 - Credentials stay in the per-user Windows Credential Locker and are only sent to devices on your LAN. Nothing goes through the cloud.
-- No password-derived value is sent to a device before it proves it knows the password hash.
+- KLAP devices and cameras: no password-derived value is sent before the device proves it knows the password hash.
+- Older AES firmware and robot vacuums: their protocol sends the password (AES-encrypted for the session, or as an MD5 inside TLS) at login, so a rogue host answering as one of them can capture it. The sign-in check tries them only after KLAP devices.
+- Legacy Kasa devices (XOR, Linkie) have no authentication at all: anyone on the LAN can control them, with or without this app.
 - Device connections refuse HTTP redirects and cap response sizes, so a rogue host on the LAN cannot aim the app at other services.
 - Known limits: the camera's self-signed certificate is accepted without pinning. KLAP exposes material that allows offline password guessing to anyone on the LAN, which is why TP-Link moved to TPAP. Camera responses are not integrity-protected by the protocol.
 
 ## Not supported
 
-Live video, pan / tilt control, the TPAP protocol, battery cameras paired to an H200 hub (they are reached through the hub, not directly).
+Live video, pan / tilt control, the TPAP protocol (enable Third-Party Compatibility instead), controls of cameras paired to an H200 hub (they are listed under the hub, not controlled), vacuum maps and room selection, light effects and scenes.
 
 ## Project layout
 

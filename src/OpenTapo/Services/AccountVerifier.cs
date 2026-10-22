@@ -11,8 +11,9 @@ public enum AccountCheck
 }
 
 /// <summary>
-/// Tests an account against a reachable device before it is saved. Both checks are lockout-safe:
-/// KLAP only compares hashes, and cameras validate the password through device_confirm before any login attempt.
+/// Tests an account against a reachable device before it is saved. KLAP devices come first: they only compare
+/// hashes. AES and SSL devices log in with the password, and cameras validate it through device_confirm before
+/// any login attempt. Kasa devices on XOR or Linkie have no account to check.
 /// </summary>
 public static class AccountVerifier
 {
@@ -20,8 +21,7 @@ public static class AccountVerifier
 
     public static async Task<AccountCheck> VerifyAsync(TapoAccount account, IEnumerable<TapoDevice> devices)
     {
-        // Lights first: they have no attempt counter at all.
-        foreach (TapoDevice device in devices.OrderBy(device => device.Kind == TapoDeviceKind.Camera))
+        foreach (TapoDevice device in devices.Where(UsesAccount).OrderBy(Order))
         {
             try
             {
@@ -31,7 +31,7 @@ public static class AccountVerifier
                 }
                 else
                 {
-                    await new KlapClient(device.Ip, account.Email, account.Password).CallAsync("get_device_info");
+                    await DeviceSessions.CreateSmart(device, account).CallAsync("get_device_info");
                 }
 
                 return AccountCheck.Valid;
@@ -48,4 +48,13 @@ public static class AccountVerifier
 
         return AccountCheck.NoDeviceReachable;
     }
+
+    private static bool UsesAccount(TapoDevice device) => device.Kind != TapoDeviceKind.Kasa || device.Encryption == "KLAP";
+
+    private static int Order(TapoDevice device) => device switch
+    {
+        { Kind: TapoDeviceKind.Camera } => 2,
+        { Encryption: "AES" } => 1,
+        _ => 0,
+    };
 }

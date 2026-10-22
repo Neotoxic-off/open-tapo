@@ -27,7 +27,10 @@ internal static class TestEnvironment
         CredentialStore.Resource = "OpenTapo.Tests";
         TapoDiscovery.BroadcastAddress = IPAddress.Loopback;
         TapoDiscovery.Hosts = () => [];
-        KlapClient.Port = 28080;
+        DevicePorts.Http = 28080;
+        DevicePorts.Https = 28443;
+        DevicePorts.Xor = 29999;
+        DevicePorts.Linkie = 20443;
     }
 }
 

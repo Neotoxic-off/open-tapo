@@ -17,7 +17,7 @@ public static class DeviceProbe
 
         foreach (TapoDevice device in await TapoDiscovery.ScanAsync(TimeSpan.FromSeconds(2.5)))
         {
-            await output.WriteLineAsync($"{device.Ip,-15} {device.Kind,-6} {device.Model} {device.Mac}");
+            await output.WriteLineAsync($"{device.Ip,-15} {device.Kind,-6} {device.Model} {device.Mac} {device.Type} {device.Encryption}".TrimEnd());
             if (account is null)
             {
                 continue;
@@ -29,7 +29,7 @@ public static class DeviceProbe
                     ? string.Join(", ", (await sessions.Camera(device.Ip).ExecuteAsync(
                             new CameraRequest("getDeviceInfo", """{"device_info":{"name":["basic_info"]}}""")))
                         .Select(result => $"{result.Key}={result.Value?.ToJsonString()}"))
-                    : (await sessions.Smart(device.Ip).CallAsync("get_device_info")).ToJsonString();
+                    : (await sessions.Smart(device).CallAsync("get_device_info")).ToJsonString();
                 await output.WriteLineAsync("  " + state);
             }
             catch (Exception ex)

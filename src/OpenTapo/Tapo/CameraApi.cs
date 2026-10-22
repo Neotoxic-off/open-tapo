@@ -32,6 +32,7 @@ public static class CameraApi
     public static readonly CameraRequest Connection = new("getConnectionType", """{"network":{"get_connection_type":[]}}""");
     public static readonly CameraRequest NightVision = new("getDayNightModeConfig", """{"image":{"name":"common"}}""");
     public static readonly CameraRequest Rotation = new("getRotationStatus", """{"image":{"name":["switch"]}}""");
+    public static readonly CameraRequest ChildDevices = new("getChildDeviceList", """{"childControl":{"start_index":0}}""");
     public static readonly CameraRequest StartSiren = new("do", """{"msg_alarm":{"manual_msg_alarm":{"action":"start"}}}""");
     public static readonly CameraRequest StopSiren = new("do", """{"msg_alarm":{"manual_msg_alarm":{"action":"stop"}}}""");
 

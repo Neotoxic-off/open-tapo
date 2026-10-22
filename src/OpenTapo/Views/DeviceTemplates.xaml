@@ -104,9 +104,12 @@
                 </Grid>
 
                 <ItemsControl ItemsSource="{Binding Children}" />
+                <ItemsControl Margin="26,2,0,0" ItemsSource="{Binding Outlets}" IsEnabled="{Binding IsReady}" />
 
                 <StackPanel Margin="0,8,0,0" IsEnabled="{Binding IsReady}" Visibility="{Binding IsExpanded, Converter={StaticResource Visible}}">
                     <TextBlock Style="{StaticResource Footnote}" FontSize="12" Margin="0,0,0,4" Text="{Binding Energy}" />
+                    <Slider Minimum="1" Maximum="4" TickFrequency="1" IsSnapToTickEnabled="True" TickPlacement="BottomRight" ToolTip="Fan speed"
+                            Value="{Binding FanSpeed, Delay=250}" Visibility="{Binding SupportsFanSpeed, Converter={StaticResource Visible}}" />
                     <Slider Minimum="1" Maximum="100" IsMoveToPointEnabled="True" ToolTip="Brightness"
                             Value="{Binding Brightness, Delay=250}" Visibility="{Binding SupportsBrightness, Converter={StaticResource Visible}}" />
                     <StackPanel Orientation="Horizontal" Margin="0,4,0,0">
@@ -173,8 +176,11 @@
                         <Run FontFamily="Segoe UI Emoji" Text="🔋" /> <Run Text="{Binding Battery, Mode=OneWay}" />
                     </TextBlock>
                     <CheckBox Grid.Column="3" Style="{StaticResource ToggleSwitch}" VerticalAlignment="Center"
-                              IsChecked="{Binding IsActive}" IsEnabled="{Binding IsReady}" ToolTip="Camera on / privacy mode" />
+                              IsChecked="{Binding IsActive}" IsEnabled="{Binding IsReady}" ToolTip="Camera on / privacy mode"
+                              Visibility="{Binding SupportsPrivacy, Converter={StaticResource Visible}}" />
                 </Grid>
+
+                <ItemsControl ItemsSource="{Binding Children}" />
 
                 <StackPanel Margin="0,8,0,0" IsEnabled="{Binding IsReady}" Visibility="{Binding IsExpanded, Converter={StaticResource Visible}}">
                     <ContentControl Content="{Binding MotionDetection}" />
@@ -207,6 +213,49 @@
                                  Visibility="{Binding HasStorage, Converter={StaticResource Visible}}" />
                     <TextBlock Style="{StaticResource Footnote}" FontSize="12" Margin="0,4,0,0" Text="{Binding Storage}" />
                     <TextBlock Style="{StaticResource Footnote}" FontSize="12" Text="{Binding Signal}" />
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </DataTemplate>
+
+    <DataTemplate DataType="{x:Type vm:VacuumViewModel}">
+        <Border Style="{StaticResource Row}">
+            <StackPanel>
+                <Grid Background="Transparent" Cursor="Hand" ToolTip="Show controls">
+                    <Grid.InputBindings>
+                        <MouseBinding MouseAction="LeftClick" Command="{Binding ToggleExpandedCommand}" />
+                    </Grid.InputBindings>
+                    <Grid.ColumnDefinitions>
+                        <ColumnDefinition Width="Auto" />
+                        <ColumnDefinition Width="*" />
+                        <ColumnDefinition Width="Auto" />
+                    </Grid.ColumnDefinitions>
+                    <TextBlock Style="{StaticResource Glyph}" Text="&#xE99A;" FontSize="16" Margin="2,0,10,0"
+                               Foreground="{DynamicResource AccentTextFillColorPrimaryBrush}" />
+                    <StackPanel Grid.Column="1" VerticalAlignment="Center">
+                        <TextBlock Style="{StaticResource Title}" FontSize="13" Text="{Binding Name}" />
+                        <TextBlock Style="{StaticResource RowState}" Text="{Binding State}" />
+                        <TextBlock Style="{StaticResource RowError}" Text="{Binding Error}" />
+                    </StackPanel>
+                    <TextBlock Grid.Column="2" Margin="8,0" VerticalAlignment="Center" FontSize="12" ToolTip="Battery" Style="{StaticResource Caption}">
+                        <Run FontFamily="Segoe UI Emoji" Text="🔋" /> <Run Text="{Binding Battery, Mode=OneWay}" />
+                    </TextBlock>
+                </Grid>
+
+                <StackPanel Margin="0,8,0,0" IsEnabled="{Binding IsReady}" Visibility="{Binding IsExpanded, Converter={StaticResource Visible}}">
+                    <Grid>
+                        <Grid.ColumnDefinitions>
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="6" />
+                            <ColumnDefinition Width="*" />
+                            <ColumnDefinition Width="6" />
+                            <ColumnDefinition Width="*" />
+                        </Grid.ColumnDefinitions>
+                        <Button HorizontalAlignment="Stretch" Padding="0,3" FontSize="12" Content="Clean" Command="{Binding StartCommand}" />
+                        <Button Grid.Column="2" HorizontalAlignment="Stretch" Padding="0,3" FontSize="12" Content="Pause" Command="{Binding PauseCommand}" />
+                        <Button Grid.Column="4" HorizontalAlignment="Stretch" Padding="0,3" FontSize="12" Content="Dock" Command="{Binding DockCommand}" />
+                    </Grid>
+                    <TextBlock Style="{StaticResource Footnote}" FontSize="12" Margin="0,4,0,0" Text="{Binding Signal}" />
                 </StackPanel>
             </StackPanel>
         </Border>

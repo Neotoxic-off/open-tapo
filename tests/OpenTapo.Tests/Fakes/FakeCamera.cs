@@ -67,7 +67,7 @@ internal sealed class FakeCamera : IAsyncDisposable
     public static async Task<FakeCamera> StartAsync(string password = Accounts.Password, bool md5 = false, string subject = "CN=TPRI-DEVICE")
     {
         FakeCamera camera = new(Loopback.NextIp(), password, md5);
-        X509Certificate2 certificate = CreateCertificate(subject);
+        X509Certificate2 certificate = Loopback.CreateCertificate(subject);
         camera._app = await Loopback.StartAsync(camera.Ip, 443, camera.HandleAsync, options => options.UseHttps(certificate));
         return camera;
     }
@@ -222,15 +222,6 @@ internal sealed class FakeCamera : IAsyncDisposable
         }.ToJsonString();
         string cipher = Convert.ToBase64String(aes.EncryptCbc(Encoding.UTF8.GetBytes(plain), session.Iv));
         return new JsonObject { ["error_code"] = 0, ["result"] = new JsonObject { ["response"] = cipher } };
-    }
-
-    private static X509Certificate2 CreateCertificate(string subject)
-    {
-        using RSA rsa = RSA.Create(2048);
-        CertificateRequest request = new(subject, rsa, HashAlgorithmName.SHA256, RSASignaturePadding.Pkcs1);
-        using X509Certificate2 ephemeral = request.CreateSelfSigned(DateTimeOffset.UtcNow.AddDays(-1), DateTimeOffset.UtcNow.AddYears(1));
-        // SChannel needs a persisted key: round-trip through PFX.
-        return X509CertificateLoader.LoadPkcs12(ephemeral.Export(X509ContentType.Pfx), null);
     }
 
     private sealed record Session(byte[] Key, byte[] Iv, string TagPrefix)

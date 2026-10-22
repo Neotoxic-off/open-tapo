@@ -18,7 +18,7 @@ public sealed class DiscoveryTests : IsolatedTest
         await using FakeCamera router = await FakeCamera.StartAsync(subject: "CN=router");
         // The payload's "ip" is ignored: only the sender address is trusted.
         bulb.DiscoveryReply = new JsonObject { ["device_type"] = "SMART.TAPOBULB", ["mac"] = "AA-BB", ["device_model"] = "L530E", ["ip"] = "10.9.9.9" };
-        doorbell.DiscoveryReply = new JsonObject { ["device_type"] = "SMART.IPCAMERA" };
+        doorbell.DiscoveryReply = new JsonObject { ["device_type"] = "SMART.TAPODOORBELL" };
         TapoDiscovery.Hosts = () => [bulb.Ip, doorbell.Ip, camera.Ip, router.Ip, Loopback.DeadIp];
 
         IReadOnlyList<TapoDevice> found = await TapoDiscovery.ScanAsync(TimeSpan.FromSeconds(1));
@@ -28,7 +28,7 @@ public sealed class DiscoveryTests : IsolatedTest
         [
             new(bulb.Ip, "AA-BB", "L530E", TapoDeviceKind.Smart, "SMART.TAPOBULB"),
             new(camera.Ip, "", "Tapo camera", TapoDeviceKind.Camera),
-            new(doorbell.Ip, "", "Tapo", TapoDeviceKind.Camera, "SMART.IPCAMERA"),
+            new(doorbell.Ip, "", "Tapo", TapoDeviceKind.Camera, "SMART.TAPODOORBELL"),
         ];
         Assert.Equal(expected.OrderBy(device => device.Kind).ThenBy(device => device.Ip), found);
     }
@@ -39,8 +39,8 @@ public sealed class DiscoveryTests : IsolatedTest
         await using FakeKlapDevice plug = await FakeKlapDevice.StartAsync();
         await using FakeCamera camera = await FakeCamera.StartAsync(subject: "CN=TAPO-DEVICE");
 
-        Assert.Equal(TapoDeviceKind.Camera, await TapoDiscovery.IdentifyAsync(camera.Ip));
-        Assert.Equal(TapoDeviceKind.Smart, await TapoDiscovery.IdentifyAsync(plug.Ip));
+        Assert.Equal(new TapoDevice(camera.Ip, "", "Tapo camera", TapoDeviceKind.Camera), await TapoDiscovery.IdentifyAsync(camera.Ip));
+        Assert.Equal(new TapoDevice(plug.Ip, "", "Tapo device", TapoDeviceKind.Smart), await TapoDiscovery.IdentifyAsync(plug.Ip));
         Assert.Null(await TapoDiscovery.IdentifyAsync(Loopback.DeadIp));
     }
 

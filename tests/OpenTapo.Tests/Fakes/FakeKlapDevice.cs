@@ -6,13 +6,17 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Http;
 using OpenTapo.Tapo;
 
 namespace OpenTapo.Tests.Fakes;
 
-/// <summary>A KLAP v2 device (bulb, plug, hub) on a loopback address, speaking the real protocol.</summary>
-internal sealed class FakeKlapDevice : IAsyncDisposable
+/// <summary>
+/// A KLAP device on a loopback address, speaking the real protocol: v2 (Tapo bulb, plug, hub) by default,
+/// v1 for Kasa, over HTTP or HTTPS. With <see cref="Kasa"/> set it answers the Kasa IOT API instead of the smart one.
+/// </summary>
+internal sealed class FakeKlapDevice : FakeSmartDevice, IAsyncDisposable
 {
     private readonly byte[] _authHash;
     private readonly ConcurrentDictionary<string, Session> _sessions = new();
@@ -20,24 +24,21 @@ internal sealed class FakeKlapDevice : IAsyncDisposable
     private UdpClient? _udp;
     private Session? _lastSession;
 
-    private FakeKlapDevice(string ip, string email, string password)
+    private readonly int _version;
+
+    private FakeKlapDevice(string ip, string email, string password, int version)
     {
         Ip = ip;
-        _authHash = SHA256.HashData([.. SHA1.HashData(Encoding.UTF8.GetBytes(email)), .. SHA1.HashData(Encoding.UTF8.GetBytes(password))]);
+        _version = version;
+        _authHash = version == 1
+            ? MD5.HashData([.. MD5.HashData(Encoding.UTF8.GetBytes(email)), .. MD5.HashData(Encoding.UTF8.GetBytes(password))])
+            : SHA256.HashData([.. SHA1.HashData(Encoding.UTF8.GetBytes(email)), .. SHA1.HashData(Encoding.UTF8.GetBytes(password))]);
     }
 
+    /// <summary>Answers decrypted payloads as a Kasa device instead of a smart one.</summary>
+    public FakeIot? Kasa { get; set; }
+
     public string Ip { get; }
-
-    /// <summary>What get_device_info returns; set_device_info merges into it.</summary>
-    public JsonObject Info { get; set; } = new() { ["device_on"] = false, ["model"] = "P110", ["type"] = "SMART.TAPOPLUG" };
-
-    /// <summary>Other getters answered in multipleRequest: a null value is answered with an error code, a missing one too.</summary>
-    public Dictionary<string, JsonNode?> Results { get; } = [];
-
-    public ConcurrentQueue<(string Method, JsonNode? Params)> Calls { get; } = new();
-
-    /// <summary>error_code returned by every call other than get_device_info and multipleRequest.</summary>
-    public int ErrorCode { get; set; }
 
     public bool RejectHandshake { get; set; }
 
@@ -59,10 +60,13 @@ internal sealed class FakeKlapDevice : IAsyncDisposable
 
     public int Handshakes;
 
-    public static async Task<FakeKlapDevice> StartAsync(string email = Accounts.Email, string password = Accounts.Password, bool answerDiscovery = false)
+    public static async Task<FakeKlapDevice> StartAsync(
+        string email = Accounts.Email, string password = Accounts.Password, bool answerDiscovery = false, int version = 2, bool https = false)
     {
-        FakeKlapDevice device = new(Loopback.NextIp(), email, password);
-        device._app = await Loopback.StartAsync(device.Ip, KlapClient.Port, device.HandleAsync);
+        FakeKlapDevice device = new(Loopback.NextIp(), email, password, version);
+        device._app = https
+            ? await Loopback.StartAsync(device.Ip, DevicePorts.Https, device.HandleAsync, options => options.UseHttps(Loopback.CreateCertificate("CN=TAPO-DEVICE")))
+            : await Loopback.StartAsync(device.Ip, DevicePorts.Http, device.HandleAsync);
         if (answerDiscovery)
         {
             device._udp = new UdpClient(new IPEndPoint(IPAddress.Parse(device.Ip), 20002));
@@ -116,12 +120,16 @@ internal sealed class FakeKlapDevice : IAsyncDisposable
                     context.Response.Headers.SetCookie = $"TP_SESSIONID={id};TIMEOUT=86400";
                 }
 
-                await context.Response.Body.WriteAsync((byte[])[.. remoteSeed, .. SHA256.HashData([.. body, .. remoteSeed, .. _authHash])]);
+                byte[] proof = _version == 1 ? SHA256.HashData([.. body, .. _authHash]) : SHA256.HashData([.. body, .. remoteSeed, .. _authHash]);
+                await context.Response.Body.WriteAsync((byte[])[.. remoteSeed, .. proof]);
                 return;
 
             case "/app/handshake2":
                 Session? pending = Find(context);
-                if (pending is null || !body.SequenceEqual(SHA256.HashData([.. pending.RemoteSeed, .. pending.LocalSeed, .. _authHash])))
+                byte[]? confirm = pending is null ? null
+                    : _version == 1 ? SHA256.HashData([.. pending.RemoteSeed, .. _authHash])
+                    : SHA256.HashData([.. pending.RemoteSeed, .. pending.LocalSeed, .. _authHash]);
+                if (pending is null || !body.SequenceEqual(confirm!))
                 {
                     context.Response.StatusCode = StatusCodes.Status400BadRequest;
                     return;
@@ -157,7 +165,8 @@ internal sealed class FakeKlapDevice : IAsyncDisposable
                 {
                     aes.Key = current.Key;
                     JsonNode request = JsonNode.Parse(aes.DecryptCbc(cipher, iv))!;
-                    string reply = PlainReply ?? Process((string)request["method"]!, request["params"]).ToJsonString();
+                    string reply = PlainReply
+                        ?? (Kasa is not null ? Kasa.Process(request.AsObject()) : Process((string)request["method"]!, request["params"])).ToJsonString();
                     byte[] encrypted = aes.EncryptCbc(Encoding.UTF8.GetBytes(reply), iv);
                     await context.Response.Body.WriteAsync((byte[])[.. SHA256.HashData([.. current.Signature, .. BigEndian(sequence), .. encrypted]), .. encrypted]);
                 }
@@ -168,53 +177,6 @@ internal sealed class FakeKlapDevice : IAsyncDisposable
                 context.Response.StatusCode = StatusCodes.Status404NotFound;
                 return;
         }
-    }
-
-    private JsonObject Process(string method, JsonNode? parameters)
-    {
-        if (method == "multipleRequest")
-        {
-            JsonArray responses = [];
-            foreach (JsonNode? request in parameters!["requests"]!.AsArray())
-            {
-                string name = (string)request!["method"]!;
-                JsonObject response = new() { ["method"] = name };
-                if (name == "get_device_info")
-                {
-                    response["result"] = Info.DeepClone();
-                    response["error_code"] = 0;
-                }
-                else if (Results.TryGetValue(name, out JsonNode? result) && result is not null)
-                {
-                    response["result"] = result.DeepClone();
-                    response["error_code"] = 0;
-                }
-                else
-                {
-                    response["error_code"] = -40210;
-                }
-
-                responses.Add(response);
-            }
-
-            return new JsonObject { ["error_code"] = 0, ["result"] = new JsonObject { ["responses"] = responses } };
-        }
-
-        Calls.Enqueue((method, parameters?.DeepClone()));
-        if (method == "get_device_info")
-        {
-            return new JsonObject { ["error_code"] = 0, ["result"] = Info.DeepClone() };
-        }
-
-        if (method == "set_device_info" && ErrorCode == 0)
-        {
-            foreach ((string key, JsonNode? value) in parameters!.AsObject())
-            {
-                Info[key] = value?.DeepClone();
-            }
-        }
-
-        return new JsonObject { ["error_code"] = ErrorCode };
     }
 
     private Session? Find(HttpContext context)

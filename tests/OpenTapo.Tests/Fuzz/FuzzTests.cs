@@ -26,10 +26,14 @@ public sealed class FuzzTests : IsolatedTest
         "result", "error_code", "method", "responses", "device_type", "mac", "device_model", "nickname", "model", "type",
         "device_on", "brightness", "color_temp", "color_temp_range", "hue", "saturation", "rssi", "time_usage", "today",
         "past7", "past30", "enable", "current_power", "today_energy", "month_energy", "child_device_list", "current_temp",
-        "target_temp", "current_humidity", "detected", "open", "battery_percentage", "at_low_battery", "status",
+        "target_temp", "current_humidity", "detected", "open", "in_alarm", "battery_percentage", "at_low_battery", "status",
         "device_info", "basic_info", "device_alias", "battery_percent", "battery_charging", "low_battery", "harddisk_manage",
         "hd_info", "hd_info_1", "total_space", "free_space", "system", "last_alarm_info", "last_alarm_type", "last_alarm_time",
         "rssiValue", "image", "common", "inf_type", "switch", "flip_type", "lens_mask", "lens_mask_info", "enabled",
+        "mgt_encrypt_schm", "encrypt_type", "is_support_https", "lv", "fan_speed_level", "device_id", "in_alarm",
+        "system", "get_sysinfo", "alias", "mic_type", "mic_mac", "relay_state", "light_state", "on_off", "dft_on_state",
+        "is_dimmable", "is_color", "is_variable_color_temp", "lighting_effect_state", "children", "id", "err_code",
+        "emeter", "get_realtime", "power_mw", "power", "value", "battery_percentage", "token", "key", "response",
     ];
 
     [Fact]
@@ -67,6 +71,92 @@ public sealed class FuzzTests : IsolatedTest
                 ? RandomBytes(random, random.Next(0, 64))
                 : [.. RandomBytes(random, 16), .. Encoding.UTF8.GetBytes(RandomJson(random, depth: 3).ToJsonString())];
             Check(2, i, Convert.ToBase64String(packet), () => TapoDiscovery.TryParseReply(new UdpReceiveResult(packet, sender), out _));
+        }
+    }
+
+    [Fact]
+    public void Legacy_discovery_parser_accepts_any_datagram()
+    {
+        Random random = new(8);
+        IPEndPoint sender = new(IPAddress.Parse("127.0.0.7"), DevicePorts.Xor);
+        for (int i = 0; i < Iterations * 10; i++)
+        {
+            byte[] packet = i % 2 == 0
+                ? RandomBytes(random, random.Next(0, 64))
+                : Xor.Encrypt(Encoding.UTF8.GetBytes(new JsonObject { ["system"] = new JsonObject { ["get_sysinfo"] = RandomObject(random, depth: 2) } }.ToJsonString()));
+            Check(8, i, Convert.ToBase64String(packet), () => TapoDiscovery.TryParseReply(new UdpReceiveResult(packet, sender), out _));
+        }
+    }
+
+    [Fact]
+    public async Task Kasa_view_survives_any_device_state()
+    {
+        await using FakeKasaDevice device = FakeKasaDevice.Start();
+        SignIn();
+        SmartDeviceViewModel viewModel = new(new TapoDevice(device.Ip, "", "HS110", TapoDeviceKind.Kasa, "IOT.SMARTPLUGSWITCH", "XOR"), new DeviceSessions(new CredentialStore()));
+        Random random = new(9);
+        for (int i = 0; i < Iterations; i++)
+        {
+            device.Iot.SysInfo = RandomObject(random, depth: 3);
+            device.Iot.Realtime = random.Next(2) == 0 ? null : RandomObject(random, depth: 1);
+            await CheckAsync(9, i, device.Iot.SysInfo.ToJsonString(), viewModel.RefreshAsync);
+            await CheckAsync(9, i, device.Iot.SysInfo.ToJsonString(), () =>
+                new KasaClient(new XorClient(device.Ip)).CallAsync("set_device_info", new JsonObject { ["device_on"] = true, ["brightness"] = 50, ["hue"] = 10 }));
+        }
+    }
+
+    [Fact]
+    public async Task Kasa_transports_reject_any_malformed_reply()
+    {
+        await using FakeKasaDevice device = FakeKasaDevice.Start();
+        await using FakeKasaDevice camera = await FakeKasaDevice.StartLinkieAsync();
+        Random random = new(10);
+        for (int i = 0; i < Iterations; i++)
+        {
+            byte[] body = RandomBytes(random, random.Next(0, 96));
+            device.RawReply = i % 2 == 0 ? body : Xor.Encrypt(Encoding.UTF8.GetBytes(RandomJson(random, depth: 3).ToJsonString()));
+            camera.RawReply = i % 2 == 0 ? body : Encoding.UTF8.GetBytes(Convert.ToBase64String(device.RawReply));
+            await CheckAsync(10, i, Convert.ToBase64String(body), () => new KasaClient(new XorClient(device.Ip)).CallAsync("get_device_info"));
+            await CheckAsync(10, i, Convert.ToBase64String(body), () => new KasaClient(new LinkieClient(camera.Ip)).CallAsync("get_device_info"));
+        }
+    }
+
+    [Fact]
+    public async Task Aes_and_ssl_clients_reject_any_malformed_reply()
+    {
+        await using FakeAesDevice aes = await FakeAesDevice.StartAsync();
+        await using FakeVacuum vacuum = await FakeVacuum.StartAsync();
+        Random random = new(11);
+        for (int i = 0; i < Iterations; i++)
+        {
+            string body = i % 3 == 0 ? Encoding.Latin1.GetString(RandomBytes(random, random.Next(0, 64))) : RandomJson(random, depth: 4).ToJsonString();
+            aes.Raw = context => context.Response.WriteAsync(body);
+            vacuum.Raw = context => context.Response.WriteAsync(body);
+            await CheckAsync(11, i, body, () => new AesClient(aes.Ip, Accounts.Email, Accounts.Password).CallAsync("get_device_info"));
+            await CheckAsync(11, i, body, () => new SslClient(vacuum.Ip, Accounts.Email, Accounts.Password).ExecuteAsync("get_device_info"));
+        }
+
+        aes.Raw = null;
+        for (int i = 0; i < Iterations; i++)
+        {
+            aes.PlainReply = i % 3 == 0 ? RandomString(random) : RandomJson(random, depth: 4).ToJsonString();
+            await CheckAsync(11, Iterations + i, aes.PlainReply, () => new AesClient(aes.Ip, Accounts.Email, Accounts.Password).ExecuteAsync("get_device_info"));
+        }
+    }
+
+    [Fact]
+    public async Task Vacuum_view_survives_any_reply()
+    {
+        await using FakeVacuum vacuum = await FakeVacuum.StartAsync();
+        SignIn();
+        VacuumViewModel viewModel = new(new TapoDevice(vacuum.Ip, "", "RV30", TapoDeviceKind.Vacuum, "SMART.TAPOROBOVAC", "AES", true), new DeviceSessions(new CredentialStore()));
+        Random random = new(12);
+        for (int i = 0; i < Iterations; i++)
+        {
+            vacuum.Info = RandomObject(random, depth: 2);
+            vacuum.Results["getVacStatus"] = RandomObject(random, depth: 1);
+            vacuum.Results["getBatteryInfo"] = random.Next(4) == 0 ? null : RandomObject(random, depth: 1);
+            await CheckAsync(12, i, vacuum.Info.ToJsonString(), viewModel.RefreshAsync);
         }
     }
 
@@ -116,7 +206,7 @@ public sealed class FuzzTests : IsolatedTest
         {
             camera.PlainReply = RandomBatchReply(
                 random,
-                "getDeviceInfo", "getSdCardStatus", "getLastAlarmInfo", "getConnectionType", "getDayNightModeConfig", "getRotationStatus", "getLensMaskConfig", "getDetectionConfig");
+                "getDeviceInfo", "getSdCardStatus", "getLastAlarmInfo", "getConnectionType", "getDayNightModeConfig", "getRotationStatus", "getLensMaskConfig", "getDetectionConfig", "getChildDeviceList");
             await CheckAsync(5, i, camera.PlainReply, viewModel.RefreshAsync);
         }
     }

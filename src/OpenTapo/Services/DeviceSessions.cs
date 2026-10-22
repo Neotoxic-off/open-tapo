@@ -23,8 +23,9 @@ public sealed class DeviceSessions
         };
     }
 
-    public KlapClient Smart(string ip) =>
-        GetOrCreate(ip, account => new KlapClient(ip, account.Email, account.Password));
+    /// <summary>The smart API client for any non-camera device, over the transport it announced.</summary>
+    public SmartClient Smart(TapoDevice device) =>
+        GetOrCreate(device.Ip, account => CreateSmart(device, account));
 
     public CameraClient Camera(string ip) =>
         GetOrCreate(ip, account =>
@@ -33,6 +34,16 @@ public sealed class DeviceSessions
             client.Rejected += (_, _) => _rejectedCameras.Add(ip);
             return client;
         });
+
+    internal static SmartClient CreateSmart(TapoDevice device, TapoAccount account) => device switch
+    {
+        { Kind: TapoDeviceKind.Kasa, Encryption: "KLAP" } => new KasaClient(new KlapClient(device.Ip, account.Email, account.Password, device.LoginVersion >= 2 ? 2 : 1)),
+        { Kind: TapoDeviceKind.Kasa, Type: "IOT.IPCAMERA" } => new KasaClient(new LinkieClient(device.Ip)),
+        { Kind: TapoDeviceKind.Kasa } => new KasaClient(new XorClient(device.Ip)),
+        { Encryption: "AES", Https: true } => new SslClient(device.Ip, account.Email, account.Password),
+        { Encryption: "AES" } => new AesClient(device.Ip, account.Email, account.Password, device.LoginVersion),
+        _ => new KlapClient(device.Ip, account.Email, account.Password, https: device.Https),
+    };
 
     private T GetOrCreate<T>(string ip, Func<TapoAccount, T> create)
         where T : class

@@ -40,6 +40,13 @@ public sealed record ChildReading(string Name, string Reading, bool IsAlert)
             alert |= open;
         }
 
+        // T300 water leak sensor.
+        if ((bool?)child["in_alarm"] is bool leak)
+        {
+            parts.Add(leak ? "Leak" : "Dry");
+            alert |= leak;
+        }
+
         if ((int?)child["battery_percentage"] is int battery)
         {
             parts.Add($"battery {battery} %");

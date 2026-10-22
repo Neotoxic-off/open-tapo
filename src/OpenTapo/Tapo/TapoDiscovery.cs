@@ -13,8 +13,8 @@ using System.Text.Json.Nodes;
 namespace OpenTapo.Tapo;
 
 /// <summary>
-/// Finds Tapo devices on the local network: the app's UDP 20002 discovery (lights, plugs),
-/// then a TLS fingerprint on 443 for cameras that ignore it.
+/// Finds Tapo and Kasa devices on the local network: the Tapo app's UDP 20002 discovery, the Kasa app's
+/// UDP 9999 one (legacy devices), then a TLS fingerprint on 443 for cameras that ignore both.
 /// </summary>
 public static class TapoDiscovery
 {
@@ -23,6 +23,7 @@ public static class TapoDiscovery
     private const int SioUdpConnReset = unchecked((int)0x9800000C);
     private static readonly TimeSpan ConnectTimeout = TimeSpan.FromMilliseconds(1500);
     private static readonly TimeSpan TlsTimeout = TimeSpan.FromSeconds(4);
+    private const string LegacyQuery = """{"system":{"get_sysinfo":{}}}""";
     private static readonly string[] CameraCertificateNames = ["CN=TPRI-DEVICE", "CN=TAPO-DEVICE"];
 
     /// <summary>Tests aim discovery at loopback fakes so a test run never probes the user's real devices.</summary>
@@ -30,21 +31,49 @@ public static class TapoDiscovery
 
     internal static Func<IEnumerable<string>> Hosts { get; set; } = LocalSubnetHosts;
 
-    public static async Task<IReadOnlyList<TapoDevice>> ScanAsync(TimeSpan listenTime)
+    public static Task<IReadOnlyList<TapoDevice>> ScanAsync(TimeSpan listenTime) => ScanAsync(Hosts().ToList(), broadcast: true, listenTime);
+
+    /// <summary>
+    /// Identifies a device typed in by IP: by a unicast discovery, else as a camera by TLS fingerprint, else as a
+    /// KLAP device if its HTTP port answers; null if unreachable.
+    /// </summary>
+    public static async Task<TapoDevice?> IdentifyAsync(string ip)
+    {
+        if ((await ScanAsync([ip], broadcast: false, ConnectTimeout)).FirstOrDefault() is TapoDevice found)
+        {
+            return found;
+        }
+
+        try
+        {
+            using TcpClient tcp = new();
+            using CancellationTokenSource connect = new(ConnectTimeout);
+            await tcp.ConnectAsync(ip, DevicePorts.Http, connect.Token);
+            return new TapoDevice(ip, "", "Tapo device", TapoDeviceKind.Smart);
+        }
+        catch (Exception ex) when (ex is SocketException or OperationCanceledException)
+        {
+            return null;
+        }
+    }
+
+    private static async Task<IReadOnlyList<TapoDevice>> ScanAsync(List<string> hosts, bool broadcast, TimeSpan listenTime)
     {
         Dictionary<string, TapoDevice> found = [];
         byte[] packet = BuildDiscoveryPacket();
-        List<string> hosts = Hosts().ToList();
+        byte[] legacyPacket = Xor.Encrypt(Bytes.Utf8(LegacyQuery));
 
         using (UdpClient udp = new(0) { EnableBroadcast = true })
         {
             // ICMP "port unreachable" from silent hosts must not abort the receive loop.
             udp.Client.IOControl(SioUdpConnReset, [0, 0, 0, 0], null);
-            await udp.SendAsync(packet, new IPEndPoint(BroadcastAddress, DiscoveryPort));
-            // Windows Firewall drops replies to a broadcast (source mismatch), so unicast every neighbour too.
-            foreach (string host in hosts)
+            // Tapo devices answer on 20002, legacy Kasa devices on 9999.
+            List<IPAddress> targets = [.. broadcast ? [BroadcastAddress] : Array.Empty<IPAddress>(), .. hosts.Select(IPAddress.Parse)];
+            // Windows Firewall drops replies to a broadcast (source mismatch), so every neighbour is also probed by unicast.
+            foreach (IPAddress target in targets)
             {
-                await udp.SendAsync(packet, new IPEndPoint(IPAddress.Parse(host), DiscoveryPort));
+                await udp.SendAsync(packet, new IPEndPoint(target, DiscoveryPort));
+                await udp.SendAsync(legacyPacket, new IPEndPoint(target, DevicePorts.Xor));
             }
 
             using CancellationTokenSource listen = new(listenTime);
@@ -75,27 +104,6 @@ public static class TapoDiscovery
         }
 
         return found.Values.OrderBy(device => device.Kind).ThenBy(device => device.Ip).ToList();
-    }
-
-    /// <summary>Identifies a device typed in by IP: camera by TLS fingerprint, light if KLAP's HTTP port answers, null if unreachable.</summary>
-    public static async Task<TapoDeviceKind?> IdentifyAsync(string ip)
-    {
-        if (await IsCameraAsync(ip))
-        {
-            return TapoDeviceKind.Camera;
-        }
-
-        try
-        {
-            using TcpClient tcp = new();
-            using CancellationTokenSource connect = new(ConnectTimeout);
-            await tcp.ConnectAsync(ip, KlapClient.Port, connect.Token);
-            return TapoDeviceKind.Smart;
-        }
-        catch (Exception ex) when (ex is SocketException or OperationCanceledException)
-        {
-            return null;
-        }
     }
 
     /// <summary>
@@ -152,13 +160,33 @@ public static class TapoDiscovery
     internal static bool TryParseReply(UdpReceiveResult reply, [NotNullWhen(true)] out TapoDevice? device)
     {
         device = null;
-        if (reply.Buffer.Length <= HeaderLength)
+        if (reply.Buffer.Length <= HeaderLength && reply.RemoteEndPoint.Port != DevicePorts.Xor)
         {
             return false;
         }
 
         try
         {
+            // The sender address, not the payload's "ip": a replier must not choose which host the app contacts.
+            string ip = reply.RemoteEndPoint.Address.ToString();
+            if (reply.RemoteEndPoint.Port == DevicePorts.Xor)
+            {
+                JsonNode? system = JsonNode.Parse(Xor.Decrypt(reply.Buffer))?["system"]?["get_sysinfo"];
+                if (system is null)
+                {
+                    return false;
+                }
+
+                string legacyType = (string?)(system["mic_type"] ?? system["type"]) ?? "";
+                if (!legacyType.StartsWith("IOT.", StringComparison.Ordinal))
+                {
+                    return false;
+                }
+
+                device = new TapoDevice(ip, (string?)(system["mac"] ?? system["mic_mac"]) ?? "", (string?)system["model"] ?? "Kasa", TapoDeviceKind.Kasa, legacyType, "XOR");
+                return true;
+            }
+
             JsonNode? info = JsonNode.Parse(reply.Buffer.AsSpan(HeaderLength))?["result"];
             if (info is null)
             {
@@ -166,13 +194,18 @@ public static class TapoDiscovery
             }
 
             string type = (string?)info["device_type"] ?? "";
+            JsonNode? scheme = info["mgt_encrypt_schm"];
+            string encryption = (string?)scheme?["encrypt_type"] ?? "";
+            bool https = (bool?)scheme?["is_support_https"] ?? false;
             device = new TapoDevice(
-                // The sender address, not the payload's "ip": a replier must not choose which host the app contacts.
-                reply.RemoteEndPoint.Address.ToString(),
+                ip,
                 (string?)info["mac"] ?? "",
                 (string?)info["device_model"] ?? "Tapo",
-                type.Contains("CAMERA", StringComparison.Ordinal) ? TapoDeviceKind.Camera : TapoDeviceKind.Smart,
-                type);
+                TapoDevice.KindOf(type, encryption, https),
+                type,
+                encryption,
+                https,
+                (int?)scheme?["lv"] ?? 0);
             return true;
         }
         catch (Exception ex) when (TapoException.IsMalformedReply(ex))

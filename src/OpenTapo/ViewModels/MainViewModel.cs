@@ -153,14 +153,12 @@ public sealed partial class MainViewModel : ObservableObject
     {
         string ip = IPAddress.Parse(ManualIp.Trim()).ToString();
         Status = $"Connecting to {ip}…";
-        TapoDeviceKind? kind = await TapoDiscovery.IdentifyAsync(ip);
-        if (kind is not TapoDeviceKind found)
+        if (await TapoDiscovery.IdentifyAsync(ip) is not TapoDevice device)
         {
             Status = $"{ip} is not responding (same network? Wi-Fi client isolation?)";
             return;
         }
 
-        TapoDevice device = new(ip, "", found == TapoDeviceKind.Camera ? "Tapo camera" : "Tapo device", found);
         _knownDevices.Remember([device]);
         ManualIp = "";
         if (AddIfMissing(device) is DeviceViewModel added)
@@ -180,9 +178,12 @@ public sealed partial class MainViewModel : ObservableObject
             return null;
         }
 
-        DeviceViewModel viewModel = device.Kind == TapoDeviceKind.Camera
-            ? new CameraViewModel(device, _sessions)
-            : new SmartDeviceViewModel(device, _sessions);
+        DeviceViewModel viewModel = device.Kind switch
+        {
+            TapoDeviceKind.Camera => new CameraViewModel(device, _sessions),
+            TapoDeviceKind.Vacuum => new VacuumViewModel(device, _sessions),
+            _ => new SmartDeviceViewModel(device, _sessions),
+        };
         Devices.Add(viewModel);
         return viewModel;
     }

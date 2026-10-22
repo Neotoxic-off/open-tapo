@@ -225,7 +225,7 @@ public sealed class SmartDeviceViewModelTests : IsolatedTest
 
         SmartDeviceViewModel viewModel = await LoadAsync(bulb);
 
-        Assert.Equal("The light rejected these Tapo credentials.", viewModel.Error);
+        Assert.Equal("The device rejected these Tapo credentials.", viewModel.Error);
     }
 
     [Fact]

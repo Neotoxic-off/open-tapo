@@ -9,6 +9,8 @@ namespace OpenTapo.Tests.Integration;
 
 public sealed class ServiceTests : IsolatedTest
 {
+    private static readonly TapoDevice Plug = new("10.0.0.1", "", "P110", TapoDeviceKind.Smart);
+
     [Fact]
     public async Task Account_is_checked_on_lights_before_cameras()
     {
@@ -54,7 +56,7 @@ public sealed class ServiceTests : IsolatedTest
     {
         DeviceSessions sessions = new(new CredentialStore());
 
-        Assert.Throws<TapoAuthException>(() => sessions.Smart("10.0.0.1"));
+        Assert.Throws<TapoAuthException>(() => sessions.Smart(Plug));
     }
 
     [Fact]
@@ -64,12 +66,12 @@ public sealed class ServiceTests : IsolatedTest
         CredentialStore credentials = new();
         DeviceSessions sessions = new(credentials);
 
-        KlapClient first = sessions.Smart("10.0.0.1");
-        Assert.Same(first, sessions.Smart("10.0.0.1"));
+        SmartClient first = sessions.Smart(Plug);
+        Assert.Same(first, sessions.Smart(Plug));
         Assert.NotSame(first, sessions.Camera("10.0.0.1"));
 
         credentials.Save(Accounts.Valid);
-        Assert.NotSame(first, sessions.Smart("10.0.0.1"));
+        Assert.NotSame(first, sessions.Smart(Plug));
     }
 
     [Fact]
