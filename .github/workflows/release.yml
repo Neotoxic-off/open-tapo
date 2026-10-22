@@ -24,6 +24,9 @@ jobs:
           # Exact SDK: self-contained publish pulls SDK-versioned packages (ILLink) into the lock files.
           dotnet-version: 10.0.401
 
+      # The runner image ships newer SDKs and dotnet picks the newest unless global.json says otherwise.
+      - run: dotnet new globaljson --sdk-version 10.0.401 --roll-forward disable
+
       - run: dotnet restore ${{ env.TESTS }} --locked-mode
 
       - run: dotnet build ${{ env.PROJECT }} -c Release --no-restore -warnaserror
