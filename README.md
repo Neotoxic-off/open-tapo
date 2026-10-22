@@ -65,7 +65,7 @@ dotnet test tests/OpenTapo.Tests
 ```
 
 - **Unit**: formatting, sensor readings, camera API payloads, converters.
-- **Integration**: fake KLAP devices and fake cameras speaking the real protocols (handshakes, AES-CBC, `Tapo_tag`, device_confirm, lockout) on loopback addresses `127.0.0.x`, ports 80, 443 and 20002, driven through the real clients, discovery, stores and view models.
+- **Integration**: fake KLAP devices and fake cameras speaking the real protocols (handshakes, AES-CBC, `Tapo_tag`, device_confirm, lockout) on loopback addresses `127.0.0.x`, ports 28080, 443 and 20002, driven through the real clients, discovery, stores and view models.
 - **Fuzz**: seeded random datagrams, JSON documents, encrypted payloads and raw HTTP bodies against every parser that reads LAN data. Any host can answer as a device, so a hostile reply must end as an error line, never a crash.
 
 The run fails below 100 % line coverage (coverlet). The WPF shell (`App`, panel window, tray icon, window backdrop) needs a desktop session and is excluded. Tests never touch your account, `%LOCALAPPDATA%\OpenTapo` or your LAN: they use their own Credential Locker entry, a temporary folder and loopback devices only.

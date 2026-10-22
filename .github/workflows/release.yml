@@ -31,7 +31,7 @@ jobs:
 
       - run: dotnet build ${{ env.PROJECT }} -c Release --no-restore -warnaserror
 
-      # Unit, integration (fake devices on loopback :80/:443) and fuzz tests; fails under 100 % line coverage.
+      # Unit, integration (fake devices on loopback) and fuzz tests; fails under 100 % line coverage.
       - run: dotnet test ${{ env.TESTS }} -c Release --no-restore
 
       - name: Publish

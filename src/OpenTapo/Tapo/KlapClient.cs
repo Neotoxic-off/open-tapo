@@ -14,6 +14,9 @@ public sealed class KlapClient(string ip, string email, string password)
 {
     private static readonly HttpClient Http = DeviceHttp.Create(TimeSpan.FromSeconds(6));
 
+    /// <summary>Always 80 on devices; tests move it because CI machines keep 80 for HTTP.sys.</summary>
+    internal static int Port { get; set; } = 80;
+
     private readonly SemaphoreSlim _gate = new(1, 1);
     private KlapSession? _session;
 
@@ -139,7 +142,7 @@ public sealed class KlapClient(string ip, string email, string password)
 
     private Task<HttpResponseMessage> PostAsync(string path, byte[] body, string? cookie)
     {
-        HttpRequestMessage request = new(HttpMethod.Post, $"http://{ip}/app/{path}") { Content = new ByteArrayContent(body) };
+        HttpRequestMessage request = new(HttpMethod.Post, $"http://{ip}:{Port}/app/{path}") { Content = new ByteArrayContent(body) };
         if (cookie is not null)
         {
             request.Headers.Add("Cookie", cookie);

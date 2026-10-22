@@ -7,10 +7,11 @@ using System.Text;
 using System.Text.Json.Nodes;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Http;
+using OpenTapo.Tapo;
 
 namespace OpenTapo.Tests.Fakes;
 
-/// <summary>A KLAP v2 device (bulb, plug, hub) on port 80 of a loopback address, speaking the real protocol.</summary>
+/// <summary>A KLAP v2 device (bulb, plug, hub) on a loopback address, speaking the real protocol.</summary>
 internal sealed class FakeKlapDevice : IAsyncDisposable
 {
     private readonly byte[] _authHash;
@@ -61,7 +62,7 @@ internal sealed class FakeKlapDevice : IAsyncDisposable
     public static async Task<FakeKlapDevice> StartAsync(string email = Accounts.Email, string password = Accounts.Password, bool answerDiscovery = false)
     {
         FakeKlapDevice device = new(Loopback.NextIp(), email, password);
-        device._app = await Loopback.StartAsync(device.Ip, 80, device.HandleAsync);
+        device._app = await Loopback.StartAsync(device.Ip, KlapClient.Port, device.HandleAsync);
         if (answerDiscovery)
         {
             device._udp = new UdpClient(new IPEndPoint(IPAddress.Parse(device.Ip), 20002));

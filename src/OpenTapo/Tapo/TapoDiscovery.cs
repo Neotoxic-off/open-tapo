@@ -89,7 +89,7 @@ public static class TapoDiscovery
         {
             using TcpClient tcp = new();
             using CancellationTokenSource connect = new(ConnectTimeout);
-            await tcp.ConnectAsync(ip, 80, connect.Token);
+            await tcp.ConnectAsync(ip, KlapClient.Port, connect.Token);
             return TapoDeviceKind.Smart;
         }
         catch (Exception ex) when (ex is SocketException or OperationCanceledException)

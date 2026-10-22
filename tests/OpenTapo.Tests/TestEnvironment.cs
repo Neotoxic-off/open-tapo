@@ -27,6 +27,7 @@ internal static class TestEnvironment
         CredentialStore.Resource = "OpenTapo.Tests";
         TapoDiscovery.BroadcastAddress = IPAddress.Loopback;
         TapoDiscovery.Hosts = () => [];
+        KlapClient.Port = 28080;
     }
 }
 

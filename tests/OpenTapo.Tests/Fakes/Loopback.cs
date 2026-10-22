@@ -10,7 +10,7 @@ using Microsoft.Extensions.Logging;
 
 namespace OpenTapo.Tests.Fakes;
 
-/// <summary>Fake devices live on their own 127.0.0.x address, because the clients always use ports 80 and 443.</summary>
+/// <summary>Fake devices live on their own 127.0.0.x address, because the clients use fixed ports.</summary>
 internal static class Loopback
 {
     /// <summary>Nothing ever listens here: connections are refused at once.</summary>
