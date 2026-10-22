@@ -1,5 +1,7 @@
 # open-tapo
 
+[![build](https://github.com/Neotoxic-off/open-tapo/actions/workflows/release.yml/badge.svg)](https://github.com/Neotoxic-off/open-tapo/actions/workflows/release.yml)
+
 A small Windows tray app to control your **TP-Link Tapo** lights, plugs, sensors and cameras **locally**, without the Tapo app and without going through the cloud.
 
 <p align="center">
@@ -12,7 +14,7 @@ Click the icon next to the clock: a compact dark panel opens above the taskbar, 
 
 ## Download
 
-Grab `OpenTapo.exe` from the [latest release](https://github.com/Neotoxic-off/open-tapo/releases/latest) and run it. It is a single self-contained file: no installer, no .NET to install. Windows SmartScreen may warn on first launch because the executable is not code-signed; choose **More info → Run anyway**.
+Grab `OpenTapo.exe` from the [latest release](https://github.com/Neotoxic-off/open-tapo/releases/latest) and run it. It is a single self-contained file: no installer, no .NET to install. Releases are built, tested and Authenticode-signed by GitHub Actions. SmartScreen may still warn until the signature builds reputation; choose **More info → Run anyway**.
 
 ## Features
 
@@ -55,6 +57,22 @@ dotnet publish src/OpenTapo -c Release
 ```
 
 `OpenTapo.exe` is self-contained: copy it anywhere and run it. Running it again while it is already open brings the panel up.
+
+## Tests
+
+```powershell
+dotnet test tests/OpenTapo.Tests
+```
+
+- **Unit**: formatting, sensor readings, camera API payloads, converters.
+- **Integration**: fake KLAP devices and fake cameras speaking the real protocols (handshakes, AES-CBC, `Tapo_tag`, device_confirm, lockout) on loopback addresses `127.0.0.x`, ports 80, 443 and 20002, driven through the real clients, discovery, stores and view models.
+- **Fuzz**: seeded random datagrams, JSON documents, encrypted payloads and raw HTTP bodies against every parser that reads LAN data. Any host can answer as a device, so a hostile reply must end as an error line, never a crash.
+
+The run fails below 100 % line coverage (coverlet). The WPF shell (`App`, panel window, tray icon, window backdrop) needs a desktop session and is excluded. Tests never touch your account, `%LOCALAPPDATA%\OpenTapo` or your LAN: they use their own Credential Locker entry, a temporary folder and loopback devices only.
+
+## Releases
+
+GitHub Actions builds and tests every push and pull request. Pushing a `v*` tag also publishes the single-file exe, signs it with `signtool` and attaches it to a GitHub release. Signing needs two repository secrets: `CERT_PFX_BASE64` (the code-signing `.pfx`, base64) and `CERT_PASSWORD`.
 
 Diagnostics: `OpenTapo.exe --probe` lists the devices found on the network and reads each one with the stored account. Errors the app cannot show are written to `%LOCALAPPDATA%\OpenTapo\error.log`.
 
@@ -104,6 +122,9 @@ src/OpenTapo/
   ViewModels/   MVVM (CommunityToolkit.Mvvm: observable properties, relay commands, messenger)
   Views/        tray icon, panel, Fluent styles and device templates
   Diagnostics/  --probe and error log
+tests/OpenTapo.Tests/
+  Fakes/        loopback KLAP device and camera (Kestrel)
+  Unit/  Integration/  Fuzz/
 ```
 
 Code style: explicit types everywhere (`var` fails the build, enforced by `.editorconfig`), file-scoped namespaces, a single NuGet dependency pinned by a lock file.
